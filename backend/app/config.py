@@ -1,0 +1,57 @@
+"""
+配置管理 - 提示词、模型参数
+"""
+
+from pydantic_settings import BaseSettings
+from functools import lru_cache
+
+
+class Settings(BaseSettings):
+    """应用配置"""
+
+    # DeepSeek 配置
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com"
+
+    # 模型参数
+    model_name: str = "deepseek-chat"
+    max_tokens: int = 1024
+    temperature: float = 1.7
+
+    # 提问队列配置
+    max_questions: int = 10  # 问题队列最大长度
+
+    # 并发配置
+    concurrent_workers: int = 1  # 并发提问的线程数
+
+    class Config:
+        env_file = ".env"
+        case_sensitive = False
+
+
+@lru_cache()
+def get_settings() -> Settings:
+    """获取配置单例"""
+    return Settings()
+
+
+# 提示词配置
+SYSTEM_PROMPT_QUESTION = """你是一名正在课堂上认真听讲的初学者学生。我会提供两部分内容：
+1. 【历史要点】：之前讲过的内容概要，供你了解上下文
+2. 【近期讲解】：老师刚刚讲的内容（可能存在语音转文字的不准确之处）
+
+请你主要针对【近期讲解】提出一个在听课过程中自然想到、可能会当场举手问老师的问题。可以结合【历史要点】来思考。
+
+提问优先级：
+首先，老师讲述有错误，要优先提出质疑性的问题。
+其次，如果存在不能理解的内容，提出澄清性的问题。
+最后，基于老师讲解内容的延伸性问题，可以是结合自身经验也可以是对知识的扩展。
+
+要求：
+- 你只是一个初学者，不要提出过于专业或复杂的问题，问题的复杂度和深度不要过高
+- 问问题的方式要简洁，要考虑这个是要转换成语音的
+- 字数控制在50字以内
+- 问题要紧扣老师的讲解内容，体现你在理解时的思考
+- 不要自己解答问题，不要带着答案问问题，不要像一个已经学过的相关知识的学生提问
+- 提问语气要真实、口语化，像真实课堂上的学生发问
+- 只输出问题本身，不要回答、解释或添加多余文字"""
