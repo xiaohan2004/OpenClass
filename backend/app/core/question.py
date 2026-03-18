@@ -6,11 +6,11 @@ import logging
 import time
 import heapq
 import random
+from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 
 from app.config import get_settings
 from app.services.llm import generate_question
-from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +41,8 @@ class QuestionProcessor:
         """
         self.text += text + " "
         preview = text[:50] + "..." if len(text) > 50 else text
-        logger.info(f"教师新增讲课片段: {preview}")
-        logger.debug(f"当前文本长度: {len(self.text)}字")
+        logger.info("教师新增讲课片段: %s", preview)
+        logger.debug("当前文本长度: %d字", len(self.text))
 
     def get_text(self) -> str:
         """获取当前文本"""
@@ -76,8 +76,8 @@ class QuestionProcessor:
             logger.warning("当前无文本内容，跳过提问生成")
             return []
 
-        logger.info(f"触发并发提问 (并发数: {count})")
-        logger.debug(f"文本长度: {len(text)}字")
+        logger.info("触发并发提问 (并发数: %d)", count)
+        logger.debug("文本长度: %d字", len(text))
 
         batch_timestamp = time.time()  # 使用同一时间戳作为批次标识
         batch_questions = []
@@ -95,8 +95,8 @@ class QuestionProcessor:
 
                     batch_questions.append(question)
 
-                except Exception as e:
-                    logger.error(f"提问处理失败: {e}")
+                except RuntimeError as e:
+                    logger.error("提问处理失败: %s", e)
 
         # 将整批问题作为一个组入队
         if batch_questions:
@@ -106,12 +106,11 @@ class QuestionProcessor:
                 # 超过最大长度时删除最旧的（队头）
                 if len(self.question_queue) > self.max_questions:
                     removed = heapq.heappop(self.question_queue)
-                    removed_questions = ', '.join(removed[1])
-                    logger.debug(f"队列已满，删除最旧批次: {removed_questions}")
+                    logger.debug("队列已满，删除最旧批次: %s", ', '.join(removed[1]))
 
-            logger.info(f"批次 {batch_timestamp:.3f}: {len(batch_questions)} 个问题入队")
+            logger.info("批次 %.3f: %d 个问题入队", batch_timestamp, len(batch_questions))
 
-        logger.info(f"本轮生成 {len(batch_questions)} 个有效问题")
+        logger.info("本轮生成 %d 个有效问题", len(batch_questions))
         return batch_questions
 
     def get_questions_flat(self) -> list[str]:
@@ -143,7 +142,7 @@ class QuestionProcessor:
                 return None
 
             selected = random.choice(questions)
-            logger.info(f"从最新批次随机选择问题: {selected}")
+            logger.info("从最新批次随机选择问题: %s", selected)
             return selected
 
     def get_question_queue_raw(self) -> list[tuple[float, list[str]]]:

@@ -2,8 +2,8 @@
 配置管理 - 提示词、模型参数
 """
 
-from pydantic_settings import BaseSettings
 from functools import lru_cache
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):

@@ -52,5 +52,5 @@ def generate_question(context: str) -> str:
         )
         return response.choices[0].message.content
     except Exception as e:
-        logger.error(f"问题生成失败: {e}")
+        logger.error("问题生成失败: %s", e)
         raise
