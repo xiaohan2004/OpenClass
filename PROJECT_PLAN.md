@@ -163,3 +163,34 @@ CREATE INDEX idx_llmlogs_type ON llmlogs(type);
   - 根据课堂讲解节奏动态调整提问频率、难度与表达方式，使互动更加自然。
   - 实现技术：规则策略或简单节奏控制算法，大语言模型生成不同难度的问题。
   - 流程简述：系统根据讲解时间长度、最近提问时间以及内容变化情况判断是否需要生成新问题，并通过规则或策略动态调整提问频率与问题难度，以保持课堂互动节奏的自然性。
+
+## 项目目录
+```
+OpenClass/
+├── backend/                 # Python 后端
+│   ├── app/
+│   │   ├── main.py          # FastAPI 入口
+│   │   ├── core/            # 核心业务
+│   │   ├── api/             # 接口层
+│   │   │   ├── routes/
+│   │   │   └── deps.py      # 依赖注入
+│   │   ├── db/              # 数据库
+│   │   │   ├── session.py   # DB连接
+│   │   │   ├── models.py    # SQLModel模型
+│   │   │   └── crud/        # 数据操作
+│   │   ├── services/        # 外部能力
+│   │   │   ├── llm.py       # LLM调用
+│   │   │   ├── asr.py       # 语音识别
+│   │   │   └── tts.py       # 语音合成
+│   │   ├── config.py        # 配置
+│   │   └── utils/           # 工具函数
+│   └── requirements.txt
+├── frontend/                # Vue 前端
+│   ├── src/
+│   ├── index.html
+│   └── package.json
+├── tauri/                   # 桌面应用封装
+├── data/                    # 本地数据
+├── scripts/                 # 放一次性 / 工具型 / 运维型的代码
+└── README.md
+```
