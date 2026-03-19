@@ -4,13 +4,12 @@
 
 import logging
 import time
-import heapq
 import random
 from concurrent.futures import ThreadPoolExecutor
-from threading import Lock
 
 from app.config import get_settings
 from app.services.llm import generate_question
+from app.utils.timestamp_queue import TimestampQueue
 
 logger = logging.getLogger(__name__)
 
@@ -20,16 +19,14 @@ class QuestionProcessor:
     学生提问处理器
 
     被动接收文本，由外部控制提问触发时机
-    并发生成问题并入队，使用 heapq 自动按时间戳排序
-    队列结构: [(timestamp, [question1, question2, ...]), ...]
+    并发生成问题并入队，使用 TimestampQueue 维护按时间戳排序的队列
     """
 
     def __init__(self):
         settings = get_settings()
         self.max_questions = settings.max_questions
-        self.question_queue = []  # heapq: [(timestamp, [question1, question2, ...]), ...] 自动排序
+        self._question_queue = TimestampQueue(max_size=settings.max_questions)
         self.text = ""  # 当前讲课文本
-        self._lock = Lock()  # 线程锁
         logger.info("QuestionProcessor 初始化完成")
 
     def append_text(self, text: str) -> None:
@@ -95,18 +92,19 @@ class QuestionProcessor:
 
                     batch_questions.append(question)
 
-                except RuntimeError as e:
+                except Exception as e:
                     logger.error("提问处理失败: %s", e)
 
         # 将整批问题作为一个组入队
         if batch_questions:
-            with self._lock:
-                heapq.heappush(self.question_queue, (batch_timestamp, batch_questions))
+            removed_batches = self._question_queue.add_batch(batch_timestamp, batch_questions)
 
-                # 超过最大长度时删除最旧的（队头）
-                if len(self.question_queue) > self.max_questions:
-                    removed = heapq.heappop(self.question_queue)
-                    logger.debug("队列已满，删除最旧批次: %s", ', '.join(removed[1]))
+            if removed_batches:
+                for removed_timestamp, removed_questions in removed_batches:
+                    logger.debug(
+                        "队列已满，删除最旧批次 %.3f: %s",
+                        removed_timestamp, ', '.join(removed_questions)
+                    )
 
             logger.info("批次 %.3f: %d 个问题入队", batch_timestamp, len(batch_questions))
 
@@ -115,11 +113,7 @@ class QuestionProcessor:
 
     def get_questions_flat(self) -> list[str]:
         """获取当前问题队列中的所有问题（展开后的问题列表）"""
-        with self._lock:
-            all_questions = []
-            for _, question_batch in self.question_queue:
-                all_questions.extend(question_batch)
-            return all_questions
+        return self._question_queue.get_all_data_flat()
 
     def get_latest_question_random(self) -> str | None:
         """
@@ -128,22 +122,21 @@ class QuestionProcessor:
         Returns:
             随机选择的问题，如果没有问题则返回 None
         """
-        with self._lock:
-            if not self.question_queue:
-                logger.debug("问题队列为空")
-                return None
+        latest_batch = self._question_queue.get_latest_batch()
 
-            # 获取最新的批次（heapq 队尾是最新）
-            latest_batch = self.question_queue[-1]
-            _, questions = latest_batch
+        if latest_batch is None:
+            logger.debug("问题队列为空")
+            return None
 
-            if not questions:
-                logger.debug("最新批次无有效问题")
-                return None
+        _, questions = latest_batch
 
-            selected = random.choice(questions)
-            logger.info("从最新批次随机选择问题: %s", selected)
-            return selected
+        if not questions:
+            logger.debug("最新批次无有效问题")
+            return None
+
+        selected = random.choice(questions)
+        logger.info("从最新批次随机选择问题: %s", selected)
+        return selected
 
     def get_question_queue_raw(self) -> list[tuple[float, list[str]]]:
         """
@@ -152,5 +145,4 @@ class QuestionProcessor:
         Returns:
             [(timestamp, [question1, question2, ...]), ...]
         """
-        with self._lock:
-            return [(timestamp, questions.copy()) for timestamp, questions in self.question_queue]
+        return self._question_queue.get_raw_queue()

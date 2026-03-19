@@ -84,13 +84,13 @@ class TestQuestionProcessor(unittest.TestCase):
 
     def test_question_queue_batch_structure(self):
         """测试问题队列的批次结构"""
-        # 模拟添加问题批次
-        import heapq
+        # 通过公共API添加问题批次
         test_questions = ["问题1", "问题2", "问题3"]
         timestamp = time.time()
 
-        with self.processor._lock:
-            heapq.heappush(self.processor.question_queue, (timestamp, test_questions))
+        # 模拟一个批次直接添加到内部队列（为了测试）
+        with self.processor._question_queue._lock:
+            self.processor._question_queue._queue.append((timestamp, test_questions))
 
         # 验证队列结构
         queue_raw = self.processor.get_question_queue_raw()
@@ -100,15 +100,13 @@ class TestQuestionProcessor(unittest.TestCase):
 
     def test_get_questions_flat(self):
         """测试获取展开后的问题列表"""
-        # 模拟添加多个批次的问题
-        import heapq
-
+        # 通过公共API添加多个批次的问题
         batch1 = ["问题1", "问题2"]
         batch2 = ["问题3", "问题4"]
 
-        with self.processor._lock:
-            heapq.heappush(self.processor.question_queue, (time.time(), batch1))
-            heapq.heappush(self.processor.question_queue, (time.time() + 1, batch2))
+        with self.processor._question_queue._lock:
+            self.processor._question_queue._queue.append((time.time(), batch1))
+            self.processor._question_queue._queue.append((time.time() + 1, batch2))
 
         all_questions = self.processor.get_questions_flat()
         self.assertEqual(len(all_questions), 4)
@@ -122,11 +120,10 @@ class TestQuestionProcessor(unittest.TestCase):
         self.assertIsNone(result)
 
         # 添加测试数据
-        import heapq
         test_questions = ["问题A", "问题B", "问题C"]
 
-        with self.processor._lock:
-            heapq.heappush(self.processor.question_queue, (time.time(), test_questions))
+        with self.processor._question_queue._lock:
+            self.processor._question_queue._queue.append((time.time(), test_questions))
 
         # 测试随机选择
         result = self.processor.get_latest_question_random()
@@ -137,18 +134,108 @@ class TestQuestionProcessor(unittest.TestCase):
         settings = get_settings()
         max_size = settings.max_questions
 
-        # 添加超过限制的问题批次
-        import heapq
+        # 通过公共API添加多个批次，触发自动清理
+        base_time = time.time()
         for i in range(max_size + 2):  # 超出限制2个
             questions = [f"问题{i}-1", f"问题{i}-2"]
-            heapq.heappush(self.processor.question_queue, (time.time() + i, questions))
 
-            # 触发队列清理
-            if len(self.processor.question_queue) > max_size:
-                heapq.heappop(self.processor.question_queue)
+            # 使用公共API添加批次（这会触发自动清理）
+            removed_batches = self.processor._question_queue.add_batch(base_time + i, questions)
+
+            # 验证当超出限制时确实有批次被删除
+            if i >= max_size:
+                self.assertGreater(len(removed_batches), 0, f"第{i+1}个批次添加时应该有删除")
 
         # 验证队列长度没有超过限制
-        self.assertLessEqual(len(self.processor.question_queue), max_size)
+        self.assertLessEqual(self.processor._question_queue.size(), max_size)
+
+    def test_queue_cleanup_multiple_batches(self):
+        """测试队列清理多个批次的情况"""
+        settings = get_settings()
+        max_size = settings.max_questions
+
+        # 先填满队列
+        base_time = time.time()
+        for i in range(max_size):
+            questions = [f"问题{i}-1", f"问题{i}-2"]
+            removed_batches = self.processor._question_queue.add_batch(base_time + i, questions)
+            self.assertEqual(len(removed_batches), 0, "填充队列时不应该删除")
+
+        # 验证队列已满
+        self.assertEqual(self.processor._question_queue.size(), max_size)
+
+        # 添加3个新批次（应该触发删除3个最旧的）
+        removed_count = 0
+        for i in range(3):
+            questions = [f"新问题{i}-1", f"新问题{i}-2"]
+            batch_timestamp = base_time + max_size + i
+
+            # 使用公共API添加批次
+            removed_batches = self.processor._question_queue.add_batch(batch_timestamp, questions)
+            removed_count += len(removed_batches)
+
+        # 验证总共删除了3个最旧的批次
+        self.assertEqual(removed_count, 3, "应该删除3个最旧的批次")
+
+        # 验证队列长度正确
+        self.assertEqual(self.processor._question_queue.size(), max_size)
+
+        # 验证最旧的3个批次已被删除（检查最新的批次存在）
+        all_questions = self.processor.get_questions_flat()
+        self.assertIn("新问题0-1", all_questions)
+        self.assertIn("新问题2-2", all_questions)
+
+        # 验证最旧的批次确实被删除了
+        self.assertNotIn("问题0-1", all_questions)
+        self.assertNotIn("问题2-2", all_questions)
+
+    def test_optimized_insertion_performance(self):
+        """测试优化插入逻辑的正确性和性能"""
+        # 测试1: 正常情况（新批次时间戳最大）- 应该直接追加
+        base_time = time.time()
+
+        # 添加一些初始批次
+        for i in range(3):
+            questions = [f"初始问题{i}-1", f"初始问题{i}-2"]
+            self.processor._question_queue.add_batch(base_time + i, questions)
+
+        # 添加一个时间戳更大的新批次（应该直接追加）
+        new_questions = ["新问题1", "新问题2"]
+        new_timestamp = base_time + 10
+
+        # 使用公共API添加批次
+        removed_batches = self.processor._question_queue.add_batch(new_timestamp, new_questions)
+
+        # 验证新批次在队尾（最新批次）
+        latest_batch = self.processor._question_queue.get_latest_batch()
+        self.assertIsNotNone(latest_batch)
+        self.assertEqual(latest_batch[0], new_timestamp)
+        self.assertEqual(latest_batch[1], new_questions)
+
+        # 测试2: 特殊情况（新批次时间戳较小）- 需要插入到中间
+        old_questions = ["旧问题1", "旧问题2"]
+        old_timestamp = base_time + 1.5  # 在初始批次1和2之间
+
+        # 使用公共API添加批次
+        removed_batches = self.processor._question_queue.add_batch(old_timestamp, old_questions)
+
+        # 验证旧批次被正确插入
+        queue_raw = self.processor._question_queue.get_raw_queue()
+        found_pos = -1
+        for i, (ts, questions) in enumerate(queue_raw):
+            if ts == old_timestamp and questions == old_questions:
+                found_pos = i
+                break
+
+        self.assertNotEqual(found_pos, -1, "旧批次应该被插入到队列中")
+
+        # 验证时间戳仍然有序
+        for i in range(len(queue_raw) - 1):
+            self.assertLessEqual(queue_raw[i][0], queue_raw[i + 1][0])
+
+        # 验证插入位置正确（应该在初始问题1和2之间）
+        self.assertGreater(found_pos, 0)  # 不在队头
+        self.assertLess(found_pos, len(queue_raw) - 1)  # 不在队尾
 
     def test_thread_safety(self):
         """测试线程安全性"""
