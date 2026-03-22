@@ -216,5 +216,5 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Other files to ignore
-test_report.txt
+TestReport.txt
 .claude/

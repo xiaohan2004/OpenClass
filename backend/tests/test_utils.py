@@ -1,144 +1,124 @@
 """
-测试工具模块 - 提供测试数据和辅助函数
+工具模块测试 - 时间戳队列与工具包导出验证
 """
 
 import sys
-import os
 import unittest
 from pathlib import Path
 
-# 添加项目路径到Python路径
+# 添加项目路径到 Python 路径
 TESTS_DIR = Path(__file__).parent
 PROJECT_ROOT = TESTS_DIR.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-
-class TestUtils:
-    """测试工具类"""
-
-    @staticmethod
-    def get_sample_teaching_texts():
-        """获取示例教学文本"""
-        return [
-            "今天我们学习Python编程，重点是函数和类的使用。",
-            "递归算法是一种重要的编程技巧，函数调用自身来解决问题。",
-            "面向对象编程中，类是对象的蓝图，包含属性和方法。",
-            "数据结构中的栈和队列是线性表的特殊形式，遵循特定的操作规则。",
-            "数据库索引可以大大提高查询效率，但会增加写入开销。"
-        ]
-
-    @staticmethod
-    def get_sample_questions():
-        """获取示例问题"""
-        return [
-            "什么是函数？",
-            "类和对象有什么区别？",
-            "递归有什么优缺点？",
-            "栈和队列的应用场景是什么？",
-            "什么时候应该使用数据库索引？"
-        ]
-
-    @staticmethod
-    def get_long_teaching_text():
-        """获取长教学文本用于测试"""
-        return """
-        今天我们深入学习Python编程语言的高级特性。首先，让我们回顾一下基础知识：
-        Python是一种解释型、高级、通用编程语言，由Guido van Rossum创建，并于1991年首次发布。
-        Python的设计哲学强调代码的可读性和简洁性，这使得它成为初学者的理想选择。
-
-        现在让我们进入高级主题。装饰器是Python中非常强大的功能，它允许我们修改函数或类的行为
-        而无需永久修改它们。装饰器本质上是一个接受函数作为参数并返回新函数的函数。
-
-        接下来是生成器，它使用yield关键字来创建迭代器。生成器函数在每次调用时不会立即执行，
-        而是在需要时才计算值，这大大节省了内存使用。
-
-        上下文管理器通过with语句来管理资源，确保资源的正确分配和释放。最常见的例子是文件操作。
-
-        最后，让我们讨论元类。元类是创建类的类，它允许我们在类创建时动态地修改类的行为。
-        虽然元类功能强大，但应该谨慎使用，因为它们会使代码更加复杂。
-        """
-
-    @staticmethod
-    def create_test_question_batches(count=3):
-        """创建测试问题批次"""
-        import time
-        batches = []
-
-        for i in range(count):
-            batch = [
-                f"问题{i}-1",
-                f"问题{i}-2",
-                f"问题{i}-3"
-            ]
-            timestamp = time.time() + i
-            batches.append((timestamp, batch))
-
-        return batches
-
-    @staticmethod
-    def mock_llm_response(question_text="这是一个测试问题？"):
-        """创建模拟的LLM响应"""
-        class MockChoice:
-            def __init__(self, content):
-                self.message = type('Message', (), {'content': content})()
-
-        class MockResponse:
-            def __init__(self, content):
-                self.choices = [MockChoice(content)]
-
-        return MockResponse(question_text)
+from app.utils import QuestionTimestampQueue, TimestampQueue
 
 
-def run_all_tests():
-    """运行所有测试模块"""
-    # 动态导入所有测试模块
-    test_modules = [
-        'test_config',
-        'test_api',
-        'test_core',
-        'test_llm_integration'
-    ]
+class TestTimestampQueue(unittest.TestCase):
+    """TimestampQueue 测试"""
 
-    results = []
+    def test_add_keeps_timestamp_order(self):
+        """测试插入后按时间戳有序"""
+        queue = TimestampQueue(max_size=10)
 
-    for module_name in test_modules:
-        print(f"\n{'='*60}")
-        print(f"运行测试模块: {module_name}")
-        print(f"{'='*60}")
+        queue.add(3.0, "third")
+        queue.add(1.0, "first")
+        queue.add(2.0, "second")
 
-        try:
-            # 动态导入并运行测试
-            module = __import__(module_name)
-            if hasattr(module, 'main'):
-                result = module.main()
-                results.append((module_name, result == 0))
-            else:
-                print(f"⚠️  模块 {module_name} 没有main函数")
-                results.append((module_name, False))
+        self.assertEqual(queue.size(), 3)
+        self.assertEqual(queue.get_latest(), (3.0, "third"))
+        self.assertEqual(queue._queue, [
+            (1.0, "first"),
+            (2.0, "second"),
+            (3.0, "third"),
+        ])
 
-        except ImportError as e:
-            print(f"❌ 无法导入模块 {module_name}: {e}")
-            results.append((module_name, False))
-        except Exception as e:
-            print(f"❌ 运行模块 {module_name} 时出错: {e}")
-            results.append((module_name, False))
+    def test_add_returns_removed_items_when_queue_overflows(self):
+        """测试超出容量时返回被移除的数据"""
+        queue = TimestampQueue(max_size=2)
 
-    # 打印总结
-    print(f"\n{'='*60}")
-    print("测试总结")
-    print(f"{'='*60}")
+        self.assertEqual(queue.add(1.0, "a"), [])
+        self.assertEqual(queue.add(2.0, "b"), [])
+        removed = queue.add(3.0, "c")
 
-    passed = sum(1 for _, success in results if success)
-    total = len(results)
+        self.assertEqual(removed, [(1.0, "a")])
+        self.assertEqual(queue._queue, [(2.0, "b"), (3.0, "c")])
 
-    for module_name, success in results:
-        status = "✅ 通过" if success else "❌ 失败"
-        print(f"{module_name:<25} {status}")
+    def test_max_size_minus_one_means_unlimited(self):
+        """测试 max_size 为 -1 时不限制长度"""
+        queue = TimestampQueue(max_size=-1)
 
-    print(f"\n总计: {total} 个模块, {passed} 个通过, {total-passed} 个失败")
+        for i in range(5):
+            removed = queue.add(float(i), f"item-{i}")
+            self.assertEqual(removed, [])
 
-    return 0 if passed == total else 1
+        self.assertEqual(queue.size(), 5)
+        self.assertEqual(queue.get_latest(), (4.0, "item-4"))
+
+    def test_set_max_size_triggers_cleanup(self):
+        """测试缩小最大长度时立即清理旧数据"""
+        queue = TimestampQueue(max_size=-1)
+        queue.add(1.0, "a")
+        queue.add(2.0, "b")
+        queue.add(3.0, "c")
+
+        removed = queue.set_max_size(2)
+
+        self.assertEqual(removed, [(1.0, "a")])
+        self.assertEqual(queue.size(), 2)
+
+    def test_clear_is_empty_and_get_latest(self):
+        """测试清空、空队列状态和最新元素读取"""
+        queue = TimestampQueue(max_size=2)
+        self.assertTrue(queue.is_empty())
+        self.assertIsNone(queue.get_latest())
+
+        queue.add(1.0, "a")
+        self.assertFalse(queue.is_empty())
+
+        queue.clear()
+        self.assertTrue(queue.is_empty())
+        self.assertIsNone(queue.get_latest())
+
+
+class TestQuestionTimestampQueue(unittest.TestCase):
+    """QuestionTimestampQueue 测试"""
+
+    def test_get_latest_batch(self):
+        """测试获取最新问题批次"""
+        queue = QuestionTimestampQueue(max_size=10)
+        queue.add(1.0, ["问题1"])
+        queue.add(2.0, ["问题2", "问题3"])
+
+        self.assertEqual(queue.get_latest_batch(), (2.0, ["问题2", "问题3"]))
+
+    def test_get_all_data_flat(self):
+        """测试平铺所有问题"""
+        queue = QuestionTimestampQueue(max_size=10)
+        queue.add(1.0, ["问题1", "问题2"])
+        queue.add(2.0, ["问题3"])
+
+        self.assertEqual(queue.get_all_data_flat(), ["问题1", "问题2", "问题3"])
+
+    def test_utils_package_exports(self):
+        """测试 utils 包正确导出队列类"""
+        self.assertEqual(TimestampQueue.__name__, "TimestampQueue")
+        self.assertEqual(QuestionTimestampQueue.__name__, "QuestionTimestampQueue")
+
+
+def main():
+    """运行工具模块测试"""
+    print("开始运行工具模块测试...")
+
+    suite = unittest.TestSuite()
+    suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestTimestampQueue))
+    suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestQuestionTimestampQueue))
+
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
+
+    return 0 if result.wasSuccessful() else 1
 
 
 if __name__ == "__main__":
-    sys.exit(run_all_tests())
+    sys.exit(main())
