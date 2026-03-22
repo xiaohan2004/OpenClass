@@ -6,8 +6,9 @@
 """
 
 # 导出主要类
-from .timestamp_queue import TimestampQueue
+from .timestamp_queue import QuestionTimestampQueue, TimestampQueue
 
 __all__ = [
     'TimestampQueue',
+    'QuestionTimestampQueue',
 ]
