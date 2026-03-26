@@ -36,8 +36,7 @@ CREATE TABLE sessions (
     start_time DATETIME,
     end_time DATETIME,
 
-    config TEXT,    -- JSON：提问策略等
-    metadata TEXT,  -- JSON：老师信息等
+    config TEXT,    -- JSON：运行配置信息
 
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -96,38 +95,6 @@ CREATE TABLE question_transcript_map (
 );
 CREATE INDEX idx_qt_question ON question_transcript_map(question_id);
 CREATE INDEX idx_qt_transcript ON question_transcript_map(transcript_id);
-
-
--- =========================
--- 5. llmlogs（大模型调用记录）
--- =========================
-CREATE TABLE llmlogs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-    session_id INTEGER,
-    question_id INTEGER,
-
-    type TEXT NOT NULL,         -- question_gen / summary / keyword / evaluation 等
-
-    input TEXT,                 -- 输入（prompt 或拼接后的上下文）
-    output TEXT,                -- 输出（模型返回）
-
-    model TEXT,                 -- 模型名称
-    latency_ms INTEGER,         -- 延迟（毫秒）
-
-    tokens_input INTEGER,
-    tokens_output INTEGER,
-
-    status TEXT,                -- success / error
-    error TEXT,                 -- 错误信息（如有）
-
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-
-    FOREIGN KEY (session_id) REFERENCES sessions(id),
-    FOREIGN KEY (question_id) REFERENCES questions(id)
-);
-CREATE INDEX idx_llmlogs_session ON llmlogs(session_id);
-CREATE INDEX idx_llmlogs_type ON llmlogs(type);
 ```
 
 ## 扩展功能
