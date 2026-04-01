@@ -129,14 +129,11 @@ class TestConfig(unittest.TestCase):
             self.assertIn(keyword, SYSTEM_PROMPT_QUESTION)
 
     def test_settings_config_class(self):
-        """测试Settings.Config类配置"""
+        """测试 Settings 的模型配置"""
         settings = Settings()
 
-        # 验证Config类属性
-        self.assertTrue(hasattr(settings.Config, 'env_file'))
-        self.assertTrue(hasattr(settings.Config, 'case_sensitive'))
-        self.assertEqual(settings.Config.env_file, '.env')
-        self.assertEqual(settings.Config.case_sensitive, False)
+        self.assertEqual(settings.model_config.get('env_file'), '.env')
+        self.assertEqual(settings.model_config.get('case_sensitive'), False)
 
     def test_settings_env_file_priority(self):
         """测试环境变量优先级"""

@@ -3,11 +3,17 @@
 """
 
 from functools import lru_cache
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """应用配置"""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+        protected_namespaces=("settings_",),
+    )
 
     # DeepSeek 配置
     deepseek_api_key: str = ""
@@ -24,10 +30,9 @@ class Settings(BaseSettings):
     # 并发配置
     concurrent_workers: int = 1  # 并发提问的线程数
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
-
+    # 数据库配置
+    database_url: str = "sqlite:///backend/data/openclass.db"
+    database_echo: bool = False
 
 @lru_cache()
 def get_settings() -> Settings:

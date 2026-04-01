@@ -2,9 +2,12 @@
 FastAPI 应用入口
 """
 
+from contextlib import asynccontextmanager
 import logging
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+
+from app.db import init_db
 
 # 配置日志
 logging.basicConfig(
@@ -12,7 +15,18 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
-app = FastAPI(title="OpenClass - 课堂模拟学生提问助手")
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """应用生命周期，启动时初始化数据库。"""
+    init_db()
+    logger.info("数据库初始化完成")
+    yield
+
+
+app = FastAPI(title="OpenClass - 课堂模拟学生提问助手", lifespan=lifespan)
 
 
 @app.get("/health")

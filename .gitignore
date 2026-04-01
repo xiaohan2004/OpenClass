@@ -218,3 +218,6 @@ __marimo__/
 # Other files to ignore
 TestReport.txt
 .claude/
+
+# data files
+data/
