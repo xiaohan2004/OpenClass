@@ -18,6 +18,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 import app.config as app_config
 import app.db.session as db_session_module
 from app.db import (
+    Course,
     LLMInfo,
     MigrationRecord,
     Question,
@@ -34,6 +35,7 @@ from app.db import (
     init_db,
 )
 from app.db.crud import (
+    create_course,
     create_llm_info,
     create_migration_record,
     create_question,
@@ -43,9 +45,11 @@ from app.db.crud import (
     create_stats_hourly,
     create_stats_total,
     create_transcript,
+    get_course_by_id,
     get_setting,
     link_question_to_transcript,
     link_segment_summary_to_transcript,
+    list_courses,
     list_questions_by_session,
     list_relay_logs,
     list_segment_summaries_by_session,
@@ -97,7 +101,14 @@ class TestDatabase(unittest.TestCase):
         init_db()
 
         with Session(db_session_module.get_engine()) as db:
-            session = create_session(db, title="测试课堂")
+            course = create_course(
+                db,
+                code="MATH101",
+                name="高等数学",
+                description="极限、导数与积分",
+                teacher="张老师",
+            )
+            session = create_session(db, seq=1, title="测试课堂")
             transcript = create_transcript(db, session.id, "这是转写内容", seq=1, start_time=0.0, end_time=3.2)
             question = create_question(db, session.id, "这里为什么要这样做？", score=0.9)
             question_map = link_question_to_transcript(db, question.id, transcript.id)
@@ -113,7 +124,9 @@ class TestDatabase(unittest.TestCase):
             setting = upsert_setting(db, "app.mode", "dev")
             migration_record = create_migration_record(db, status=1)
 
+            self.assertIsNotNone(course.id)
             self.assertIsNotNone(session.id)
+            self.assertEqual(session.seq, 1)
             self.assertIsNotNone(transcript.id)
             self.assertIsNotNone(question.id)
             self.assertIsNotNone(question_map.id)
@@ -127,6 +140,8 @@ class TestDatabase(unittest.TestCase):
             self.assertEqual(setting.key, "app.mode")
             self.assertIsNotNone(migration_record.version)
 
+            self.assertEqual(get_course_by_id(db, course.id).code, "MATH101")
+            self.assertEqual(len(list_courses(db)), 1)
             self.assertEqual(len(list_sessions(db)), 1)
             self.assertEqual(len(list_transcripts_by_session(db, session.id)), 1)
             self.assertEqual(len(list_questions_by_session(db, session.id)), 1)

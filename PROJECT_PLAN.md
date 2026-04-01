@@ -28,10 +28,27 @@
 ### 数据库设计
 ```SQL
 -- =========================
+-- courses（课程）
+-- =========================
+CREATE TABLE courses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    code TEXT,           -- 课程编号（如 MATH101）
+    name TEXT,           -- 课程名称（如 高等数学）
+    description TEXT,    -- 课程简介
+
+    teacher TEXT,        -- 主讲老师
+
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+
+-- =========================
 -- sessions（课堂）
 -- =========================
 CREATE TABLE sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    seq INTEGER,
     title TEXT,
     start_time DATETIME,
     end_time DATETIME,

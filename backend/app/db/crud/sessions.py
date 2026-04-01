@@ -10,12 +10,14 @@ from app.db.models import SessionRecord
 
 def create_session(
     db: Session,
+    seq: Optional[int] = None,
     title: Optional[str] = None,
     start_time: Optional[datetime] = None,
     config: Optional[str] = None,
 ) -> SessionRecord:
     """创建课堂会话。"""
     session_record = SessionRecord(
+        seq=seq,
         title=title,
         start_time=start_time or datetime.utcnow(),
         config=config,

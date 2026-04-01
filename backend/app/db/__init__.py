@@ -1,6 +1,7 @@
 """数据库模块导出。"""
 
 from .models import (
+    Course,
     LLMInfo,
     MigrationRecord,
     Question,
@@ -18,6 +19,7 @@ from .models import (
 from .session import engine, get_engine, get_session, init_db
 
 __all__ = [
+    "Course",
     "LLMInfo",
     "MigrationRecord",
     "Question",

@@ -7,12 +7,26 @@ from sqlalchemy import Index
 from sqlmodel import Field, SQLModel
 
 
+class Course(SQLModel, table=True):
+    """课程记录。"""
+
+    __tablename__ = "courses"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    code: Optional[str] = Field(default=None)
+    name: Optional[str] = Field(default=None)
+    description: Optional[str] = Field(default=None)
+    teacher: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+
+
 class SessionRecord(SQLModel, table=True):
     """课堂会话记录。"""
 
     __tablename__ = "sessions"
 
     id: Optional[int] = Field(default=None, primary_key=True)
+    seq: Optional[int] = Field(default=None)
     title: Optional[str] = Field(default=None)
     start_time: Optional[datetime] = Field(default=None)
     end_time: Optional[datetime] = Field(default=None)
