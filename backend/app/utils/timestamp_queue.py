@@ -82,6 +82,13 @@ class TimestampQueue:
                 return None
             return self._queue[-1]
 
+    def get_latest_n(self, n: int) -> List[Tuple[float, Any]]:
+        """获取最新的 n 条数据。"""
+        with self._lock:
+            if not self._queue or n <= 0:
+                return []
+            return self._queue[-n:]
+
     def is_empty(self) -> bool:
         """检查队列是否为空。"""
         with self._lock:
