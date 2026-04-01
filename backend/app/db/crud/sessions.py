@@ -50,3 +50,29 @@ def close_session(db: Session, session_id: int, end_time: Optional[datetime] = N
     db.commit()
     db.refresh(session_record)
     return session_record
+
+
+def update_session(db: Session, session_id: int, **kwargs) -> Optional[SessionRecord]:
+    """更新课堂会话。"""
+    session_record = db.get(SessionRecord, session_id)
+    if session_record is None:
+        return None
+
+    for key, value in kwargs.items():
+        setattr(session_record, key, value)
+
+    db.add(session_record)
+    db.commit()
+    db.refresh(session_record)
+    return session_record
+
+
+def delete_session(db: Session, session_id: int) -> bool:
+    """删除课堂会话。"""
+    session_record = db.get(SessionRecord, session_id)
+    if session_record is None:
+        return False
+
+    db.delete(session_record)
+    db.commit()
+    return True

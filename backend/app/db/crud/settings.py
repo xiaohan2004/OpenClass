@@ -34,6 +34,23 @@ def get_setting(db: Session, key: str) -> Optional[Setting]:
     return db.get(Setting, key)
 
 
+def list_settings(db: Session) -> list[Setting]:
+    """获取全部系统设置。"""
+    statement = select(Setting).order_by(Setting.key)
+    return list(db.exec(statement))
+
+
+def delete_setting(db: Session, key: str) -> bool:
+    """删除系统设置。"""
+    setting = db.get(Setting, key)
+    if setting is None:
+        return False
+
+    db.delete(setting)
+    db.commit()
+    return True
+
+
 def create_llm_info(
     db: Session,
     name: str,
@@ -57,6 +74,28 @@ def create_llm_info(
     return llm_info
 
 
+def get_llm_info_by_name(db: Session, name: str) -> Optional[LLMInfo]:
+    """按名称获取 LLM 价格信息。"""
+    return db.get(LLMInfo, name)
+
+
+def list_llm_infos(db: Session) -> list[LLMInfo]:
+    """获取全部 LLM 价格信息。"""
+    statement = select(LLMInfo).order_by(LLMInfo.name)
+    return list(db.exec(statement))
+
+
+def delete_llm_info(db: Session, name: str) -> bool:
+    """删除 LLM 价格信息。"""
+    llm_info = db.get(LLMInfo, name)
+    if llm_info is None:
+        return False
+
+    db.delete(llm_info)
+    db.commit()
+    return True
+
+
 def create_relay_log(db: Session, **kwargs) -> RelayLog:
     """创建请求日志。"""
     relay_log = RelayLog(**kwargs)
@@ -66,10 +105,41 @@ def create_relay_log(db: Session, **kwargs) -> RelayLog:
     return relay_log
 
 
+def get_relay_log_by_id(db: Session, relay_log_id: int) -> Optional[RelayLog]:
+    """按 ID 获取请求日志。"""
+    return db.get(RelayLog, relay_log_id)
+
+
 def list_relay_logs(db: Session) -> list[RelayLog]:
     """获取请求日志列表。"""
     statement = select(RelayLog).order_by(RelayLog.id.desc())
     return list(db.exec(statement))
+
+
+def update_relay_log(db: Session, relay_log_id: int, **kwargs) -> Optional[RelayLog]:
+    """更新请求日志。"""
+    relay_log = db.get(RelayLog, relay_log_id)
+    if relay_log is None:
+        return None
+
+    for key, value in kwargs.items():
+        setattr(relay_log, key, value)
+
+    db.add(relay_log)
+    db.commit()
+    db.refresh(relay_log)
+    return relay_log
+
+
+def delete_relay_log(db: Session, relay_log_id: int) -> bool:
+    """删除请求日志。"""
+    relay_log = db.get(RelayLog, relay_log_id)
+    if relay_log is None:
+        return False
+
+    db.delete(relay_log)
+    db.commit()
+    return True
 
 
 def create_stats_total(db: Session, **kwargs) -> StatsTotal:
@@ -79,6 +149,43 @@ def create_stats_total(db: Session, **kwargs) -> StatsTotal:
     db.commit()
     db.refresh(stats_total)
     return stats_total
+
+
+def get_stats_total_by_id(db: Session, stats_total_id: int) -> Optional[StatsTotal]:
+    """按 ID 获取全量累计统计。"""
+    return db.get(StatsTotal, stats_total_id)
+
+
+def list_stats_totals(db: Session) -> list[StatsTotal]:
+    """获取全部全量累计统计。"""
+    statement = select(StatsTotal).order_by(StatsTotal.id.desc())
+    return list(db.exec(statement))
+
+
+def update_stats_total(db: Session, stats_total_id: int, **kwargs) -> Optional[StatsTotal]:
+    """更新全量累计统计。"""
+    stats_total = db.get(StatsTotal, stats_total_id)
+    if stats_total is None:
+        return None
+
+    for key, value in kwargs.items():
+        setattr(stats_total, key, value)
+
+    db.add(stats_total)
+    db.commit()
+    db.refresh(stats_total)
+    return stats_total
+
+
+def delete_stats_total(db: Session, stats_total_id: int) -> bool:
+    """删除全量累计统计。"""
+    stats_total = db.get(StatsTotal, stats_total_id)
+    if stats_total is None:
+        return False
+
+    db.delete(stats_total)
+    db.commit()
+    return True
 
 
 def upsert_stats_daily(db: Session, date: str, **kwargs) -> StatsDaily:
@@ -96,6 +203,28 @@ def upsert_stats_daily(db: Session, date: str, **kwargs) -> StatsDaily:
     return stats_daily
 
 
+def get_stats_daily_by_date(db: Session, date: str) -> Optional[StatsDaily]:
+    """按日期获取按日统计。"""
+    return db.get(StatsDaily, date)
+
+
+def list_stats_dailies(db: Session) -> list[StatsDaily]:
+    """获取全部按日统计。"""
+    statement = select(StatsDaily).order_by(StatsDaily.date.desc())
+    return list(db.exec(statement))
+
+
+def delete_stats_daily(db: Session, date: str) -> bool:
+    """删除按日统计。"""
+    stats_daily = db.get(StatsDaily, date)
+    if stats_daily is None:
+        return False
+
+    db.delete(stats_daily)
+    db.commit()
+    return True
+
+
 def create_stats_hourly(db: Session, date: str, **kwargs) -> StatsHourly:
     """创建按小时统计。"""
     stats_hourly = StatsHourly(date=date, **kwargs)
@@ -105,6 +234,43 @@ def create_stats_hourly(db: Session, date: str, **kwargs) -> StatsHourly:
     return stats_hourly
 
 
+def get_stats_hourly_by_hour(db: Session, hour: int) -> Optional[StatsHourly]:
+    """按主键获取按小时统计。"""
+    return db.get(StatsHourly, hour)
+
+
+def list_stats_hourlies(db: Session) -> list[StatsHourly]:
+    """获取全部按小时统计。"""
+    statement = select(StatsHourly).order_by(StatsHourly.hour.desc())
+    return list(db.exec(statement))
+
+
+def update_stats_hourly(db: Session, hour: int, **kwargs) -> Optional[StatsHourly]:
+    """更新按小时统计。"""
+    stats_hourly = db.get(StatsHourly, hour)
+    if stats_hourly is None:
+        return None
+
+    for key, value in kwargs.items():
+        setattr(stats_hourly, key, value)
+
+    db.add(stats_hourly)
+    db.commit()
+    db.refresh(stats_hourly)
+    return stats_hourly
+
+
+def delete_stats_hourly(db: Session, hour: int) -> bool:
+    """删除按小时统计。"""
+    stats_hourly = db.get(StatsHourly, hour)
+    if stats_hourly is None:
+        return False
+
+    db.delete(stats_hourly)
+    db.commit()
+    return True
+
+
 def create_migration_record(db: Session, status: Optional[int] = None) -> MigrationRecord:
     """创建数据库迁移记录。"""
     record = MigrationRecord(status=status)
@@ -112,3 +278,40 @@ def create_migration_record(db: Session, status: Optional[int] = None) -> Migrat
     db.commit()
     db.refresh(record)
     return record
+
+
+def get_migration_record_by_version(db: Session, version: int) -> Optional[MigrationRecord]:
+    """按版本获取迁移记录。"""
+    return db.get(MigrationRecord, version)
+
+
+def list_migration_records(db: Session) -> list[MigrationRecord]:
+    """获取全部迁移记录。"""
+    statement = select(MigrationRecord).order_by(MigrationRecord.version.desc())
+    return list(db.exec(statement))
+
+
+def update_migration_record(db: Session, version: int, **kwargs) -> Optional[MigrationRecord]:
+    """更新迁移记录。"""
+    record = db.get(MigrationRecord, version)
+    if record is None:
+        return None
+
+    for key, value in kwargs.items():
+        setattr(record, key, value)
+
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def delete_migration_record(db: Session, version: int) -> bool:
+    """删除迁移记录。"""
+    record = db.get(MigrationRecord, version)
+    if record is None:
+        return False
+
+    db.delete(record)
+    db.commit()
+    return True

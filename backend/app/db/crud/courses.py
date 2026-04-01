@@ -36,3 +36,29 @@ def list_courses(db: Session) -> list[Course]:
     """获取全部课程。"""
     statement = select(Course).order_by(Course.created_at.desc())
     return list(db.exec(statement))
+
+
+def update_course(db: Session, course_id: int, **kwargs) -> Optional[Course]:
+    """更新课程。"""
+    course = db.get(Course, course_id)
+    if course is None:
+        return None
+
+    for key, value in kwargs.items():
+        setattr(course, key, value)
+
+    db.add(course)
+    db.commit()
+    db.refresh(course)
+    return course
+
+
+def delete_course(db: Session, course_id: int) -> bool:
+    """删除课程。"""
+    course = db.get(Course, course_id)
+    if course is None:
+        return False
+
+    db.delete(course)
+    db.commit()
+    return True

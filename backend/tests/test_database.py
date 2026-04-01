@@ -45,17 +45,62 @@ from app.db.crud import (
     create_stats_hourly,
     create_stats_total,
     create_transcript,
+    delete_course,
+    delete_llm_info,
+    delete_migration_record,
+    delete_question,
+    delete_question_transcript_map,
+    delete_relay_log,
+    delete_segment_summary,
+    delete_segment_summary_transcript_map,
+    delete_session,
+    delete_setting,
+    delete_stats_daily,
+    delete_stats_hourly,
+    delete_stats_total,
+    delete_transcript,
     get_course_by_id,
+    get_llm_info_by_name,
+    get_migration_record_by_version,
+    get_question_by_id,
+    get_question_transcript_map_by_id,
+    get_relay_log_by_id,
+    get_segment_summary_by_id,
+    get_segment_summary_transcript_map_by_id,
+    get_session_by_id,
     get_setting,
+    get_stats_daily_by_date,
+    get_stats_hourly_by_hour,
+    get_stats_total_by_id,
+    get_transcript_by_id,
     link_question_to_transcript,
     link_segment_summary_to_transcript,
     list_courses,
+    list_llm_infos,
+    list_migration_records,
+    list_question_transcript_maps,
+    list_questions,
     list_questions_by_session,
     list_relay_logs,
+    list_segment_summaries,
     list_segment_summaries_by_session,
+    list_segment_summary_transcript_maps,
     list_sessions,
+    list_settings,
+    list_stats_dailies,
+    list_stats_hourlies,
+    list_stats_totals,
     list_transcripts_by_session,
     mark_question_asked,
+    update_course,
+    update_migration_record,
+    update_question,
+    update_relay_log,
+    update_segment_summary,
+    update_session,
+    update_stats_hourly,
+    update_stats_total,
+    update_transcript,
     upsert_setting,
     upsert_stats_daily,
 )
@@ -162,6 +207,139 @@ class TestDatabase(unittest.TestCase):
             self.assertIsNotNone(updated_question)
             self.assertEqual(updated_question.status, "asked")
             self.assertIsNotNone(updated_question.asked_at)
+
+    def test_full_crud_coverage_for_all_tables(self):
+        """所有表都应具备可用的 CRUD 能力。"""
+        init_db()
+
+        with Session(db_session_module.get_engine()) as db:
+            course = create_course(db, code="PHYS101", name="大学物理")
+            self.assertEqual(get_course_by_id(db, course.id).name, "大学物理")
+            updated_course = update_course(db, course.id, teacher="李老师")
+            self.assertEqual(updated_course.teacher, "李老师")
+            self.assertEqual(len(list_courses(db)), 1)
+
+            session = create_session(db, seq=2, title="第二节")
+            self.assertEqual(get_session_by_id(db, session.id).seq, 2)
+            updated_session = update_session(db, session.id, title="第二节课")
+            self.assertEqual(updated_session.title, "第二节课")
+            self.assertEqual(len(list_sessions(db)), 1)
+
+            transcript = create_transcript(db, session.id, "初始转写", seq=1)
+            self.assertEqual(get_transcript_by_id(db, transcript.id).text, "初始转写")
+            updated_transcript = update_transcript(db, transcript.id, text="更新转写")
+            self.assertEqual(updated_transcript.text, "更新转写")
+            self.assertEqual(len(list_transcripts_by_session(db, session.id)), 1)
+
+            question = create_question(db, session.id, "最初问题")
+            self.assertEqual(get_question_by_id(db, question.id).text, "最初问题")
+            updated_question = update_question(db, question.id, text="更新问题", score=0.7)
+            self.assertEqual(updated_question.text, "更新问题")
+            self.assertEqual(updated_question.score, 0.7)
+            self.assertEqual(len(list_questions(db)), 1)
+            self.assertEqual(len(list_questions_by_session(db, session.id)), 1)
+
+            question_map = link_question_to_transcript(db, question.id, transcript.id)
+            self.assertEqual(get_question_transcript_map_by_id(db, question_map.id).question_id, question.id)
+            self.assertEqual(len(list_question_transcript_maps(db, question_id=question.id)), 1)
+
+            summary = create_segment_summary(db, session.id, "最初小结")
+            self.assertEqual(get_segment_summary_by_id(db, summary.id).text, "最初小结")
+            updated_summary = update_segment_summary(db, summary.id, text="更新小结", score=0.95)
+            self.assertEqual(updated_summary.text, "更新小结")
+            self.assertEqual(len(list_segment_summaries(db)), 1)
+            self.assertEqual(len(list_segment_summaries_by_session(db, session.id)), 1)
+
+            summary_map = link_segment_summary_to_transcript(db, summary.id, transcript.id)
+            self.assertEqual(
+                get_segment_summary_transcript_map_by_id(db, summary_map.id).segment_summary_id,
+                summary.id,
+            )
+            self.assertEqual(len(list_segment_summary_transcript_maps(db, segment_summary_id=summary.id)), 1)
+
+            llm_info = create_llm_info(db, "model-a", input_price=1.0)
+            self.assertEqual(get_llm_info_by_name(db, "model-a").input, 1.0)
+            create_llm_info(db, "model-a", input_price=2.0, output_price=3.0)
+            self.assertEqual(get_llm_info_by_name(db, "model-a").input, 2.0)
+            self.assertEqual(len(list_llm_infos(db)), 1)
+
+            relay_log = create_relay_log(db, request_model_name="model-a", input_tokens=11)
+            self.assertEqual(get_relay_log_by_id(db, relay_log.id).input_tokens, 11)
+            updated_relay_log = update_relay_log(db, relay_log.id, error="timeout")
+            self.assertEqual(updated_relay_log.error, "timeout")
+            self.assertEqual(len(list_relay_logs(db)), 1)
+
+            stats_total = create_stats_total(db, input_token=10)
+            self.assertEqual(get_stats_total_by_id(db, stats_total.id).input_token, 10)
+            updated_stats_total = update_stats_total(db, stats_total.id, output_token=20)
+            self.assertEqual(updated_stats_total.output_token, 20)
+            self.assertEqual(len(list_stats_totals(db)), 1)
+
+            stats_daily = upsert_stats_daily(db, "2026-04-02", input_token=100)
+            self.assertEqual(get_stats_daily_by_date(db, "2026-04-02").input_token, 100)
+            upsert_stats_daily(db, "2026-04-02", output_token=50)
+            self.assertEqual(get_stats_daily_by_date(db, "2026-04-02").output_token, 50)
+            self.assertEqual(len(list_stats_dailies(db)), 1)
+
+            stats_hourly = create_stats_hourly(db, "2026-04-02", input_token=7)
+            self.assertEqual(get_stats_hourly_by_hour(db, stats_hourly.hour).input_token, 7)
+            updated_stats_hourly = update_stats_hourly(db, stats_hourly.hour, output_token=8)
+            self.assertEqual(updated_stats_hourly.output_token, 8)
+            self.assertEqual(len(list_stats_hourlies(db)), 1)
+
+            setting = upsert_setting(db, "feature.flag", "on")
+            self.assertEqual(get_setting(db, "feature.flag").value, "on")
+            upsert_setting(db, "feature.flag", "off")
+            self.assertEqual(get_setting(db, "feature.flag").value, "off")
+            self.assertEqual(len(list_settings(db)), 1)
+
+            migration_record = create_migration_record(db, status=0)
+            self.assertEqual(get_migration_record_by_version(db, migration_record.version).status, 0)
+            updated_migration = update_migration_record(db, migration_record.version, status=1)
+            self.assertEqual(updated_migration.status, 1)
+            self.assertEqual(len(list_migration_records(db)), 1)
+
+            self.assertTrue(delete_question_transcript_map(db, question_map.id))
+            self.assertEqual(len(list_question_transcript_maps(db)), 0)
+
+            self.assertTrue(delete_segment_summary_transcript_map(db, summary_map.id))
+            self.assertEqual(len(list_segment_summary_transcript_maps(db)), 0)
+
+            self.assertTrue(delete_question(db, question.id))
+            self.assertEqual(len(list_questions(db)), 0)
+
+            self.assertTrue(delete_segment_summary(db, summary.id))
+            self.assertEqual(len(list_segment_summaries(db)), 0)
+
+            self.assertTrue(delete_transcript(db, transcript.id))
+            self.assertEqual(len(list_transcripts_by_session(db, session.id)), 0)
+
+            self.assertTrue(delete_stats_hourly(db, stats_hourly.hour))
+            self.assertEqual(len(list_stats_hourlies(db)), 0)
+
+            self.assertTrue(delete_stats_daily(db, stats_daily.date))
+            self.assertEqual(len(list_stats_dailies(db)), 0)
+
+            self.assertTrue(delete_stats_total(db, stats_total.id))
+            self.assertEqual(len(list_stats_totals(db)), 0)
+
+            self.assertTrue(delete_relay_log(db, relay_log.id))
+            self.assertEqual(len(list_relay_logs(db)), 0)
+
+            self.assertTrue(delete_llm_info(db, llm_info.name))
+            self.assertEqual(len(list_llm_infos(db)), 0)
+
+            self.assertTrue(delete_setting(db, setting.key))
+            self.assertEqual(len(list_settings(db)), 0)
+
+            self.assertTrue(delete_migration_record(db, migration_record.version))
+            self.assertEqual(len(list_migration_records(db)), 0)
+
+            self.assertTrue(delete_session(db, session.id))
+            self.assertEqual(len(list_sessions(db)), 0)
+
+            self.assertTrue(delete_course(db, course.id))
+            self.assertEqual(len(list_courses(db)), 0)
 
     def test_app_startup_initializes_all_tables(self):
         """应用启动时应自动初始化最新数据库表。"""
