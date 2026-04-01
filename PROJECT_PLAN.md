@@ -28,7 +28,7 @@
 ### 数据库设计
 ```SQL
 -- =========================
--- 1. sessions（课堂）
+-- sessions（课堂）
 -- =========================
 CREATE TABLE sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,12 +42,12 @@ CREATE TABLE sessions (
 );
 
 -- =========================
--- 2. transcripts（转写分段）
+-- transcripts（转写分段）
 -- =========================
 CREATE TABLE transcripts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id INTEGER NOT NULL,
-    seq INTEGER
+    seq INTEGER,
 
     text TEXT NOT NULL,
     start_time REAL,   -- 秒
@@ -62,7 +62,7 @@ CREATE INDEX idx_transcripts_time ON transcripts(session_id, start_time);
 
 
 -- =========================
--- 3. questions（问题）
+-- questions（问题）
 -- =========================
 CREATE TABLE questions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,14 +76,14 @@ CREATE TABLE questions (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     asked_at DATETIME,
 
-    FOREIGN KEY (session_id) REFERENCES sessions(id),
+    FOREIGN KEY (session_id) REFERENCES sessions(id)
 );
 CREATE INDEX idx_questions_session ON questions(session_id);
 CREATE INDEX idx_questions_status ON questions(status);
 
 
 -- =========================
--- 4. question_transcript_map（问题-上下文映射）
+-- question_transcript_map（问题-上下文映射）
 -- =========================
 CREATE TABLE question_transcript_map (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -95,6 +95,148 @@ CREATE TABLE question_transcript_map (
 );
 CREATE INDEX idx_qt_question ON question_transcript_map(question_id);
 CREATE INDEX idx_qt_transcript ON question_transcript_map(transcript_id);
+
+
+-- =========================
+-- segment_summaries（分段小结）
+-- =========================
+CREATE TABLE segment_summaries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL,
+
+    text TEXT NOT NULL,
+    start_time REAL,
+    end_time REAL,
+
+    score REAL,        -- 质量评分
+
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+CREATE INDEX idx_seg_sum_session ON segment_summaries(session_id);
+CREATE INDEX idx_seg_sum_time ON segment_summaries(session_id, start_time);
+
+
+-- =========================
+-- segment_summary_transcript_map（小结-转写映射）
+-- =========================
+CREATE TABLE segment_summary_transcript_map (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    segment_summary_id INTEGER NOT NULL,
+    transcript_id INTEGER NOT NULL,
+
+    FOREIGN KEY (segment_summary_id) REFERENCES segment_summaries(id),
+    FOREIGN KEY (transcript_id) REFERENCES transcripts(id)
+);
+CREATE INDEX idx_seg_sum_map_summary ON segment_summary_transcript_map(segment_summary_id);
+CREATE INDEX idx_seg_sum_map_transcript ON segment_summary_transcript_map(transcript_id);
+
+
+-- =========================
+-- llm_infos（LLM 模型价格信息）
+-- =========================
+CREATE TABLE llm_infos (
+    name TEXT PRIMARY KEY NOT NULL,
+
+    input REAL,
+    output REAL,
+    cache_read REAL,
+    cache_write REAL
+);
+
+
+-- =========================
+-- relay_logs（请求日志）
+-- =========================
+CREATE TABLE relay_logs (
+    id INTEGER PRIMARY KEY,
+
+    time INTEGER,
+    request_model_name TEXT,
+    request_api_key_name TEXT,
+    channel_id INTEGER,
+    channel_name TEXT,
+    actual_model_name TEXT,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    ftut INTEGER,
+    use_time INTEGER,
+    cost REAL,
+    request_content TEXT,
+    response_content TEXT,
+    error TEXT,
+    attempts TEXT,
+    total_attempts INTEGER
+);
+
+
+-- =========================
+-- stats_totals（全量累计统计）
+-- =========================
+CREATE TABLE stats_totals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    input_token BIGINT,
+    output_token BIGINT,
+    input_cost REAL,
+    output_cost REAL,
+    wait_time BIGINT,
+    request_success BIGINT,
+    request_failed BIGINT
+);
+
+
+-- =========================
+-- stats_dailies（按日统计）
+-- =========================
+CREATE TABLE stats_dailies (
+    date TEXT PRIMARY KEY,
+
+    input_token BIGINT,
+    output_token BIGINT,
+    input_cost REAL,
+    output_cost REAL,
+    wait_time BIGINT,
+    request_success BIGINT,
+    request_failed BIGINT
+);
+
+
+-- =========================
+-- stats_hourlies（按小时统计）
+-- =========================
+CREATE TABLE stats_hourlies (
+    hour INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    date TEXT NOT NULL,
+    input_token BIGINT,
+    output_token BIGINT,
+    input_cost REAL,
+    output_cost REAL,
+    wait_time BIGINT,
+    request_success BIGINT,
+    request_failed BIGINT
+);
+
+
+-- =========================
+-- settings（系统设置键值对）
+-- =========================
+CREATE TABLE settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+
+-- =========================
+-- migration_records（数据库迁移版本记录）
+-- =========================
+CREATE TABLE migration_records (
+    version INTEGER PRIMARY KEY AUTOINCREMENT,
+    status INTEGER
+);
 ```
 
 ## 扩展功能
