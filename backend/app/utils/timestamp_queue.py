@@ -2,7 +2,7 @@
 时间戳队列工具类
 
 维护按时间戳排序的队列，保证队头到队尾时间戳递增，
-并提供线程安全的插入、删除和查询操作。
+并提供线程安全的插入、删除和查询操作
 """
 
 import logging
@@ -14,12 +14,12 @@ logger = logging.getLogger(__name__)
 
 class TimestampQueue:
     """
-    通用时间戳队列。
+    通用时间戳队列
 
-    队列结构: [(timestamp, data), ...]，按时间戳递增排序。
+    队列结构: [(timestamp, data), ...]，按时间戳递增排序
     """
 
-    def __init__(self, max_size: int):
+    def __init__(self, max_size: int = -1):
         self._queue: List[Tuple[float, Any]] = []
         self._max_size = max_size
         self._lock = Lock()
@@ -27,7 +27,7 @@ class TimestampQueue:
 
     def add(self, timestamp: float, data: Any) -> List[Tuple[float, Any]]:
         """
-        添加数据到队列，并保持时间戳有序。
+        添加数据到队列，并保持时间戳有序
 
         Returns:
             被移除的旧数据列表
@@ -50,7 +50,7 @@ class TimestampQueue:
             return removed_batches
 
     def _find_insert_position(self, timestamp: float) -> int:
-        """找到合适的插入位置，保持时间戳递增顺序。"""
+        """找到合适的插入位置，保持时间戳递增顺序"""
         insert_pos = len(self._queue)
         for i in range(len(self._queue) - 1, -1, -1):
             if timestamp >= self._queue[i][0]:
@@ -62,7 +62,7 @@ class TimestampQueue:
         return insert_pos
 
     def _cleanup_if_needed(self) -> List[Tuple[float, Any]]:
-        """清理超过容量的最旧数据。"""
+        """清理超过容量的最旧数据"""
         removed_batches: List[Tuple[float, Any]] = []
 
         if self._max_size == -1:
@@ -76,56 +76,76 @@ class TimestampQueue:
         return removed_batches
 
     def get_latest(self) -> Optional[Tuple[float, Any]]:
-        """获取最新的数据。"""
+        """获取最新的数据"""
         with self._lock:
             if not self._queue:
                 return None
             return self._queue[-1]
 
     def get_latest_n(self, n: int) -> List[Tuple[float, Any]]:
-        """获取最新的 n 条数据。"""
+        """获取最新的 n 条数据"""
         with self._lock:
             if not self._queue or n <= 0:
                 return []
             return self._queue[-n:]
 
     def is_empty(self) -> bool:
-        """检查队列是否为空。"""
+        """检查队列是否为空"""
         with self._lock:
             return len(self._queue) == 0
 
     def size(self) -> int:
-        """获取队列当前大小。"""
+        """获取队列当前大小"""
         with self._lock:
             return len(self._queue)
 
     def set_max_size(self, max_size: int) -> List[Tuple[float, Any]]:
-        """设置新的最大容量，并在必要时清理旧数据。"""
+        """设置新的最大容量，并在必要时清理旧数据"""
         with self._lock:
             self._max_size = max_size
             return self._cleanup_if_needed()
 
     def clear(self) -> None:
-        """清空队列。"""
+        """清空队列"""
         with self._lock:
             self._queue.clear()
             logger.debug("队列已清空")
 
 
 class QuestionTimestampQueue(TimestampQueue):
-    """问题时间戳队列，队列数据结构为 `List[str]`。"""
+    """问题时间戳队列，队列数据结构为 `List[str]`"""
 
     def add(self, timestamp: float, data: List[str]) -> List[Tuple[float, List[str]]]:
         return cast(List[Tuple[float, List[str]]], super().add(timestamp, data))
 
     def get_latest_batch(self) -> Optional[Tuple[float, List[str]]]:
-        """获取最新的一批问题。"""
+        """获取最新的一批问题"""
         return cast(Optional[Tuple[float, List[str]]], super().get_latest())
 
     def get_all_data_flat(self) -> List[str]:
-        """获取队列中所有问题的扁平列表。"""
+        """获取队列中所有问题的扁平列表"""
         with self._lock:
             all_data: List[str] = []
             for _, batch_data in self._queue:
                 all_data.extend(cast(List[str], batch_data))
             return all_data
+
+
+class TextTimestampQueue(TimestampQueue):
+    """上下文时间戳队列，队列数据结构为 `str`"""
+
+    def add(self, timestamp: float, data: str) -> List[Tuple[float, str]]:
+        return cast(List[Tuple[float, str]], super().add(timestamp, data))
+
+    def get_latest_texts(self, n: Optional[int] = None) -> str:
+        """获取最新的 n 条拼接后的文本数据（不传则全部）"""
+        with self._lock:
+            if not self._queue:
+                return ""
+
+            if n is None or n <= 0:
+                batches = self._queue
+            else:
+                batches = self._queue[-n:]
+
+            return "".join(str(data) for _, data in batches)
