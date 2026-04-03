@@ -3,8 +3,14 @@ LLM 服务层 - DeepSeek 集成
 """
 
 import logging
+
 from openai import OpenAI
-from app.config import get_settings, SYSTEM_PROMPT_QUESTION
+
+from app.config import (
+    SYSTEM_PROMPT_QUESTION,
+    SYSTEM_PROMPT_SEGMENT_SUMMARY,
+    get_settings,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,4 +59,33 @@ def generate_question(context: str) -> str:
         return response.choices[0].message.content
     except Exception as e:
         logger.error("问题生成失败: %s", e)
+        raise
+
+
+def generate_segment_summary(context: str) -> str:
+    """
+    根据课堂上下文生成阶段小结。
+
+    Args:
+        context: 课堂上下文
+
+    Returns:
+        生成的阶段小结文本
+    """
+    settings = get_settings()
+    client = get_llm_client()
+
+    try:
+        response = client.chat.completions.create(
+            model=settings.model_name,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT_SEGMENT_SUMMARY},
+                {"role": "user", "content": context},
+            ],
+            max_tokens=settings.max_tokens,
+            temperature=settings.temperature,
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        logger.error("阶段小结生成失败: %s", e)
         raise
