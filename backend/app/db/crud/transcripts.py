@@ -12,8 +12,8 @@ def create_transcript(
     session_id: int,
     text: str,
     seq: Optional[int] = None,
-    start_time: Optional[float] = None,
-    end_time: Optional[float] = None,
+    start_time: Optional[int] = None,
+    end_time: Optional[int] = None,
 ) -> Transcript:
     """创建转写片段。"""
     transcript = Transcript(

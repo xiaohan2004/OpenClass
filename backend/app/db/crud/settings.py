@@ -188,7 +188,7 @@ def delete_stats_total(db: Session, stats_total_id: int) -> bool:
     return True
 
 
-def upsert_stats_daily(db: Session, date: str, **kwargs) -> StatsDaily:
+def upsert_stats_daily(db: Session, date: int, **kwargs) -> StatsDaily:
     """写入或更新按日统计。"""
     stats_daily = db.get(StatsDaily, date)
     if stats_daily is None:
@@ -203,7 +203,7 @@ def upsert_stats_daily(db: Session, date: str, **kwargs) -> StatsDaily:
     return stats_daily
 
 
-def get_stats_daily_by_date(db: Session, date: str) -> Optional[StatsDaily]:
+def get_stats_daily_by_date(db: Session, date: int) -> Optional[StatsDaily]:
     """按日期获取按日统计。"""
     return db.get(StatsDaily, date)
 
@@ -214,7 +214,7 @@ def list_stats_dailies(db: Session) -> list[StatsDaily]:
     return list(db.exec(statement))
 
 
-def delete_stats_daily(db: Session, date: str) -> bool:
+def delete_stats_daily(db: Session, date: int) -> bool:
     """删除按日统计。"""
     stats_daily = db.get(StatsDaily, date)
     if stats_daily is None:
@@ -225,7 +225,7 @@ def delete_stats_daily(db: Session, date: str) -> bool:
     return True
 
 
-def create_stats_hourly(db: Session, date: str, **kwargs) -> StatsHourly:
+def create_stats_hourly(db: Session, date: int, **kwargs) -> StatsHourly:
     """创建按小时统计。"""
     stats_hourly = StatsHourly(date=date, **kwargs)
     db.add(stats_hourly)

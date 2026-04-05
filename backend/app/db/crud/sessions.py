@@ -1,11 +1,11 @@
 """课堂会话 CRUD。"""
 
-from datetime import datetime
 from typing import Optional
 
 from sqlmodel import Session, select
 
 from app.db.models import SessionRecord
+from app.utils.time import now_ts
 
 
 def create_session(
@@ -13,7 +13,7 @@ def create_session(
     course_id: int,
     seq: Optional[int] = None,
     title: Optional[str] = None,
-    start_time: Optional[datetime] = None,
+    start_time: Optional[int] = None,
     config: Optional[str] = None,
 ) -> SessionRecord:
     """创建课堂会话。"""
@@ -21,7 +21,7 @@ def create_session(
         course_id=course_id,
         seq=seq,
         title=title,
-        start_time=start_time or datetime.utcnow(),
+        start_time=start_time or now_ts(),
         config=config,
     )
     db.add(session_record)
@@ -48,14 +48,14 @@ def list_sessions(db: Session, course_id: Optional[int] = None) -> list[SessionR
 
 
 def close_session(
-    db: Session, session_id: int, end_time: Optional[datetime] = None
+    db: Session, session_id: int, end_time: Optional[int] = None
 ) -> Optional[SessionRecord]:
     """结束课堂会话。"""
     session_record = db.get(SessionRecord, session_id)
     if session_record is None:
         return None
 
-    session_record.end_time = end_time or datetime.utcnow()
+    session_record.end_time = end_time or now_ts()
     db.add(session_record)
     db.commit()
     db.refresh(session_record)

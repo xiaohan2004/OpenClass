@@ -56,7 +56,7 @@ CREATE TABLE courses (
 
     teacher TEXT,        -- 主讲老师
 
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at INTEGER,
 );
 
 
@@ -68,12 +68,12 @@ CREATE TABLE sessions (
     course_id INTEGER NOT NULL,   -- 所属课程
     seq INTEGER,
     title TEXT,
-    start_time DATETIME,
-    end_time DATETIME,
+    start_time INTEGER,
+    end_time INTEGER,
 
     config TEXT,    -- JSON：运行配置信息
 
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at INTEGER
 
     FOREIGN KEY (course_id) REFERENCES courses(id)
 );
@@ -87,10 +87,9 @@ CREATE TABLE transcripts (
     seq INTEGER,
 
     text TEXT NOT NULL,
-    start_time REAL,   -- 秒
-    end_time REAL,     -- 秒
-
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    start_time INTEGER,
+    end_time INTEGER,
+    created_at INTEGER,
 
     FOREIGN KEY (session_id) REFERENCES sessions(id)
 );
@@ -110,8 +109,8 @@ CREATE TABLE questions (
     status TEXT,        -- generated / asked
     score REAL,         -- 质量/优先级评分
 
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    asked_at DATETIME,
+    created_at INTEGER,
+    asked_at INTEGER,
 
     FOREIGN KEY (session_id) REFERENCES sessions(id)
 );
@@ -142,12 +141,12 @@ CREATE TABLE segment_summaries (
     session_id INTEGER NOT NULL,
 
     text TEXT NOT NULL,
-    start_time REAL,
-    end_time REAL,
+    start_time INTEGER,
+    end_time INTEGER,
 
     score REAL,        -- 质量评分
 
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at INTEGER,
 
     FOREIGN KEY (session_id) REFERENCES sessions(id)
 );

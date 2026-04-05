@@ -1,11 +1,11 @@
 """问题记录 CRUD。"""
 
-from datetime import datetime
 from typing import Optional
 
 from sqlmodel import Session, select
 
 from app.db.models import Question, QuestionTranscriptMap
+from app.utils.time import now_ts
 
 
 def create_question(
@@ -49,14 +49,14 @@ def list_questions_by_session(db: Session, session_id: int) -> list[Question]:
     return list(db.exec(statement))
 
 
-def mark_question_asked(db: Session, question_id: int, asked_at: Optional[datetime] = None) -> Optional[Question]:
+def mark_question_asked(db: Session, question_id: int, asked_at: Optional[int] = None) -> Optional[Question]:
     """标记问题已提问。"""
     question = db.get(Question, question_id)
     if question is None:
         return None
 
     question.status = "asked"
-    question.asked_at = asked_at or datetime.utcnow()
+    question.asked_at = asked_at or now_ts()
     db.add(question)
     db.commit()
     db.refresh(question)

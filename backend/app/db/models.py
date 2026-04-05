@@ -1,10 +1,11 @@
 """SQLModel 数据模型定义。"""
 
-from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import Index
 from sqlmodel import Field, SQLModel
+
+from app.utils.time import now_ts
 
 
 class Course(SQLModel, table=True):
@@ -17,7 +18,7 @@ class Course(SQLModel, table=True):
     name: Optional[str] = Field(default=None)
     description: Optional[str] = Field(default=None)
     teacher: Optional[str] = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+    created_at: int = Field(default_factory=now_ts, nullable=False)
 
 
 class SessionRecord(SQLModel, table=True):
@@ -29,10 +30,10 @@ class SessionRecord(SQLModel, table=True):
     course_id: int = Field(foreign_key="courses.id", index=True)
     seq: Optional[int] = Field(default=None)
     title: Optional[str] = Field(default=None)
-    start_time: Optional[datetime] = Field(default=None)
-    end_time: Optional[datetime] = Field(default=None)
+    start_time: Optional[int] = Field(default=None)
+    end_time: Optional[int] = Field(default=None)
     config: Optional[str] = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+    created_at: int = Field(default_factory=now_ts, nullable=False)
 
 
 class Transcript(SQLModel, table=True):
@@ -48,9 +49,9 @@ class Transcript(SQLModel, table=True):
     session_id: int = Field(foreign_key="sessions.id", nullable=False)
     seq: Optional[int] = Field(default=None)
     text: str = Field(nullable=False)
-    start_time: Optional[float] = Field(default=None)
-    end_time: Optional[float] = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+    start_time: Optional[int] = Field(default=None)
+    end_time: Optional[int] = Field(default=None)
+    created_at: int = Field(default_factory=now_ts, nullable=False)
 
 
 class Question(SQLModel, table=True):
@@ -67,8 +68,8 @@ class Question(SQLModel, table=True):
     text: str = Field(nullable=False)
     status: Optional[str] = Field(default="generated")
     score: Optional[float] = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
-    asked_at: Optional[datetime] = Field(default=None)
+    created_at: int = Field(default_factory=now_ts, nullable=False)
+    asked_at: Optional[int] = Field(default=None)
 
 
 class QuestionTranscriptMap(SQLModel, table=True):
@@ -97,10 +98,10 @@ class SegmentSummary(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     session_id: int = Field(foreign_key="sessions.id", nullable=False)
     text: str = Field(nullable=False)
-    start_time: Optional[float] = Field(default=None)
-    end_time: Optional[float] = Field(default=None)
+    start_time: Optional[int] = Field(default=None)
+    end_time: Optional[int] = Field(default=None)
     score: Optional[float] = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+    created_at: int = Field(default_factory=now_ts, nullable=False)
 
 
 class SegmentSummaryTranscriptMap(SQLModel, table=True):

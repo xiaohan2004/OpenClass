@@ -11,8 +11,8 @@ def create_segment_summary(
     db: Session,
     session_id: int,
     text: str,
-    start_time: Optional[float] = None,
-    end_time: Optional[float] = None,
+    start_time: Optional[int] = None,
+    end_time: Optional[int] = None,
     score: Optional[float] = None,
 ) -> SegmentSummary:
     """创建分段小结。"""
