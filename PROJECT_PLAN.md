@@ -310,6 +310,111 @@ CREATE TABLE migration_records (
   - 实现技术：规则策略或简单节奏控制算法，大语言模型生成不同难度的问题。
   - 流程简述：系统根据讲解时间长度、最近提问时间以及内容变化情况判断是否需要生成新问题，并通过规则或策略动态调整提问频率与问题难度，以保持课堂互动节奏的自然性。
 
+## 接口设计
+
+### 控制接口 - REST API
+用于控制课堂的开始/暂停/结束。
+
+1. 开始课堂
+```
+POST /api/sessions/{session_id}/start
+```
+
+2. 暂停课堂
+```
+POST /api/sessions/{session_id}/pause
+```
+
+3. 结束课堂
+```
+POST /api/sessions/{session_id}/end
+```
+
+### 实时数据流 - WebSocket（核心）
+这是系统最关键接口，承载主流程中的交互。
+
+WS /ws/session/{session_id}
+1. 客户端 → 服务端（输入流）
+   1. 音频数据
+    ```
+    {
+    "type": "audio_in",
+    "data": <data>
+    }
+    ```
+
+2. 服务端 → 客户端（输出流）
+   1. 转写结果（ASR）
+   ```
+   {
+     "type": "transcript",
+     "data": <data>
+   }
+   ```
+
+    2. 实时小结
+    ```
+    {
+    "type": "summary",
+    "data": <data>
+    }
+    ```
+
+    3. 生成问题
+    ```
+    {
+    "type": "question",
+    "data": <data>
+    }
+    ```
+
+    4. TTS音频输出
+    ```
+    {
+    "type": "audio_out",
+    "data": <data>
+    }
+    ```
+
+### CRUD接口 - REST API
+用于数据的增删改查。
+
+1. 创建课程
+```
+POST /api/courses
+
+Request
+{
+  "code": "MATH101",
+  "name": "高等数学",
+  "description": "极限与导数",
+  "teacher": "张老师"
+}
+
+Response
+{
+  "id": 1
+}
+```
+
+2. 创建课堂（Session）
+```
+POST /api/sessions
+
+Request
+{
+  "course_id": 1,
+  "title": "第一节：极限"
+}
+
+Response
+{
+  "id": 1
+}
+```
+
+剩余的 CRUD 接口都遵循 RESTful 规范
+
 ## 项目目录
 ```
 OpenClass/
