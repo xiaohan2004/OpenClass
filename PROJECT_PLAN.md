@@ -65,6 +65,7 @@ CREATE TABLE courses (
 -- =========================
 CREATE TABLE sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_id INTEGER NOT NULL,   -- 所属课程
     seq INTEGER,
     title TEXT,
     start_time DATETIME,
@@ -73,6 +74,8 @@ CREATE TABLE sessions (
     config TEXT,    -- JSON：运行配置信息
 
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+
+    FOREIGN KEY (course_id) REFERENCES courses(id)
 );
 
 -- =========================

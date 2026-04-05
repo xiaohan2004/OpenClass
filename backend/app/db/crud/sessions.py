@@ -10,6 +10,7 @@ from app.db.models import SessionRecord
 
 def create_session(
     db: Session,
+    course_id: int,
     seq: Optional[int] = None,
     title: Optional[str] = None,
     start_time: Optional[datetime] = None,
@@ -17,6 +18,7 @@ def create_session(
 ) -> SessionRecord:
     """创建课堂会话。"""
     session_record = SessionRecord(
+        course_id=course_id,
         seq=seq,
         title=title,
         start_time=start_time or datetime.utcnow(),
@@ -33,13 +35,21 @@ def get_session_by_id(db: Session, session_id: int) -> Optional[SessionRecord]:
     return db.get(SessionRecord, session_id)
 
 
-def list_sessions(db: Session) -> list[SessionRecord]:
-    """获取全部课堂会话。"""
-    statement = select(SessionRecord).order_by(SessionRecord.created_at.desc())
+def list_sessions(db: Session, course_id: Optional[int] = None) -> list[SessionRecord]:
+    """获取课堂会话列表（支持按课程筛选）。"""
+    statement = select(SessionRecord)
+
+    if course_id is not None:
+        statement = statement.where(SessionRecord.course_id == course_id)
+
+    statement = statement.order_by(SessionRecord.created_at.desc())
+
     return list(db.exec(statement))
 
 
-def close_session(db: Session, session_id: int, end_time: Optional[datetime] = None) -> Optional[SessionRecord]:
+def close_session(
+    db: Session, session_id: int, end_time: Optional[datetime] = None
+) -> Optional[SessionRecord]:
     """结束课堂会话。"""
     session_record = db.get(SessionRecord, session_id)
     if session_record is None:

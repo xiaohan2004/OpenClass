@@ -26,6 +26,7 @@ class SessionRecord(SQLModel, table=True):
     __tablename__ = "sessions"
 
     id: Optional[int] = Field(default=None, primary_key=True)
+    course_id: int = Field(foreign_key="courses.id", index=True)
     seq: Optional[int] = Field(default=None)
     title: Optional[str] = Field(default=None)
     start_time: Optional[datetime] = Field(default=None)
