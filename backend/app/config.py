@@ -15,9 +15,10 @@ class Settings(BaseSettings):
         protected_namespaces=("settings_",),
     )
 
-    # DeepSeek 配置
+    # LLM 配置
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
+    qwen_api_key: str = ""
 
     # 模型参数
     model_name: str = "deepseek-chat"

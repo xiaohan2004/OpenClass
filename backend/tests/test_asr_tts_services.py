@@ -1,31 +1,32 @@
-"""
-ASR / TTS 服务框架测试。
-"""
+"""ASR / TTS 真实服务集成测试"""
 
+import os
 import sys
 import unittest
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).parent
 PROJECT_ROOT = TESTS_DIR.parent
+os.chdir(PROJECT_ROOT)
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.services import get_asr_service, get_tts_service
 
+WELCOME_AUDIO_PATH = PROJECT_ROOT / "data" / "welcome.mp3"
+
 
 class TestASRAndTTSService(unittest.TestCase):
-    """ASR / TTS 占位服务测试。"""
+    """ASR / TTS 真实服务测试"""
 
-    def test_asr_transcribe_returns_text_result(self):
+    def test_asr_transcribe_with_real_audio_file(self):
+        self.assertTrue(WELCOME_AUDIO_PATH.exists(), f"测试音频不存在: {WELCOME_AUDIO_PATH}")
+
         service = get_asr_service()
-
-        result = service.transcribe(b"fake-audio-bytes")
+        audio_bytes = WELCOME_AUDIO_PATH.read_bytes()
+        result = service.transcribe(audio_bytes)
 
         self.assertIsInstance(result, str)
-        self.assertEqual(
-            result,
-            "这是一个占位的 ASR 转录结果，实际实现需要接入真实的 ASR 模型或服务。",
-        )
+        self.assertTrue(result.strip(), "ASR 返回的文本不应为空")
 
     def test_asr_transcribe_requires_audio_bytes(self):
         service = get_asr_service()
@@ -36,10 +37,10 @@ class TestASRAndTTSService(unittest.TestCase):
     def test_tts_synthesize_returns_audio_bytes(self):
         service = get_tts_service()
 
-        result = service.synthesize("这是一个占位语音结果")
+        result = service.synthesize("你好，这是 OpenClass 的真实 TTS 集成测试")
 
         self.assertIsInstance(result, bytes)
-        self.assertEqual(result, "这是一个占位语音结果".encode("utf-8"))
+        self.assertTrue(result, "TTS 返回的音频字节不应为空")
 
     def test_tts_synthesize_requires_text(self):
         service = get_tts_service()
