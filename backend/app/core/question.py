@@ -44,7 +44,7 @@ class QuestionProcessor:
         settings = get_settings()
 
         if count is None:
-            count = settings.concurrent_workers
+            count = settings.question_concurrent_workers
 
         if not context:
             logger.warning("当前无课堂上下文，跳过提问生成")

@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,
+        protected_namespaces=("settings_",),
     )
 
     # DeepSeek 配置
@@ -27,8 +28,12 @@ class Settings(BaseSettings):
     max_questions: int = 10  # 问题队列最大长度
 
     # 并发配置
-    concurrent_workers: int = 1  # 并发提问的线程数
-
+    question_concurrent_workers: int = 1  # 并发提问的线程数
+    
+    # 上下文维护配置
+    recent_lecture_window: int = 240  # 最近讲解文本的段落数
+    history_summary_window: int = 600  # 总结历史要点的段落数
+    
     # 数据库配置
     database_url: str = "sqlite:///backend/data/openclass.db"
     database_echo: bool = False

@@ -7,7 +7,7 @@
 
 import logging
 from threading import Lock
-from typing import Any, List, Optional, Tuple, cast
+from typing import Any, List, Optional, Tuple, Dict, cast
 
 logger = logging.getLogger(__name__)
 
@@ -149,3 +149,43 @@ class TextTimestampQueue(TimestampQueue):
                 batches = self._queue[-n:]
 
             return "".join(str(data) for _, data in batches)
+
+    def get_range_texts(self, start: int, end: int) -> str:
+        """获取指定 index 范围内的拼接后的文本数据"""
+        with self._lock:
+            if not self._queue:
+                return ""
+
+            # 边界保护
+            start = max(0, start)
+            end = min(len(self._queue), end)
+
+            if start >= end:
+                return ""
+
+            return "".join(str(data) for _, data in self._queue[start:end])
+
+    def get_count(self) -> int:
+        """获取队列中所有文本数据的数量"""
+        with self._lock:
+            return len(self._queue)
+
+
+class HistorySummaryTimestampQueue(TimestampQueue):
+    """历史总结时间戳队列"""
+
+    def add(
+        self, timestamp: float, data: Dict  # {"start": int, "end": int, "text": str}
+    ) -> List[Tuple[float, Dict]]:
+        return cast(List[Tuple[float, Dict]], super().add(timestamp, data))
+
+    def get_valid_summaries(self, recent_start_index: int) -> str:
+        """
+        获取不与 recent 重叠的拼接后的 summary
+        """
+        with self._lock:
+            valid_summaries = []
+            for _, summary in self._queue:
+                if summary["end"] <= recent_start_index:
+                    valid_summaries.append(summary["text"])
+            return "".join(valid_summaries)
