@@ -112,7 +112,7 @@ def get_relay_log_by_id(db: Session, relay_log_id: int) -> Optional[RelayLog]:
 
 def list_relay_logs(db: Session) -> list[RelayLog]:
     """获取请求日志列表。"""
-    statement = select(RelayLog).order_by(RelayLog.id.desc())
+    statement = select(RelayLog).order_by(RelayLog.__table__.c.id.desc())
     return list(db.exec(statement))
 
 
@@ -158,7 +158,7 @@ def get_stats_total_by_id(db: Session, stats_total_id: int) -> Optional[StatsTot
 
 def list_stats_totals(db: Session) -> list[StatsTotal]:
     """获取全部全量累计统计。"""
-    statement = select(StatsTotal).order_by(StatsTotal.id.desc())
+    statement = select(StatsTotal).order_by(StatsTotal.__table__.c.id.desc())
     return list(db.exec(statement))
 
 
@@ -210,7 +210,7 @@ def get_stats_daily_by_date(db: Session, date: int) -> Optional[StatsDaily]:
 
 def list_stats_dailies(db: Session) -> list[StatsDaily]:
     """获取全部按日统计。"""
-    statement = select(StatsDaily).order_by(StatsDaily.date.desc())
+    statement = select(StatsDaily).order_by(StatsDaily.__table__.c.date.desc())
     return list(db.exec(statement))
 
 
@@ -241,7 +241,7 @@ def get_stats_hourly_by_hour(db: Session, hour: int) -> Optional[StatsHourly]:
 
 def list_stats_hourlies(db: Session) -> list[StatsHourly]:
     """获取全部按小时统计。"""
-    statement = select(StatsHourly).order_by(StatsHourly.hour.desc())
+    statement = select(StatsHourly).order_by(StatsHourly.__table__.c.hour.desc())
     return list(db.exec(statement))
 
 
@@ -287,7 +287,7 @@ def get_migration_record_by_version(db: Session, version: int) -> Optional[Migra
 
 def list_migration_records(db: Session) -> list[MigrationRecord]:
     """获取全部迁移记录。"""
-    statement = select(MigrationRecord).order_by(MigrationRecord.version.desc())
+    statement = select(MigrationRecord).order_by(MigrationRecord.__table__.c.version.desc())
     return list(db.exec(statement))
 
 

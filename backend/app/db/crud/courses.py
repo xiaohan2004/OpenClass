@@ -34,7 +34,7 @@ def get_course_by_id(db: Session, course_id: int) -> Optional[Course]:
 
 def list_courses(db: Session) -> list[Course]:
     """获取全部课程。"""
-    statement = select(Course).order_by(Course.created_at.desc())
+    statement = select(Course).order_by(Course.__table__.c.created_at.desc())
     return list(db.exec(statement))
 
 

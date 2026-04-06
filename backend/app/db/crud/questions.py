@@ -35,7 +35,7 @@ def get_question_by_id(db: Session, question_id: int) -> Optional[Question]:
 
 def list_questions(db: Session) -> list[Question]:
     """获取全部问题记录。"""
-    statement = select(Question).order_by(Question.created_at.desc())
+    statement = select(Question).order_by(Question.__table__.c.created_at.desc())
     return list(db.exec(statement))
 
 
@@ -44,7 +44,7 @@ def list_questions_by_session(db: Session, session_id: int) -> list[Question]:
     statement = (
         select(Question)
         .where(Question.session_id == session_id)
-        .order_by(Question.created_at.desc())
+        .order_by(Question.__table__.c.created_at.desc())
     )
     return list(db.exec(statement))
 
@@ -117,7 +117,7 @@ def list_question_transcript_maps(
         statement = statement.where(QuestionTranscriptMap.question_id == question_id)
     if transcript_id is not None:
         statement = statement.where(QuestionTranscriptMap.transcript_id == transcript_id)
-    statement = statement.order_by(QuestionTranscriptMap.id.desc())
+    statement = statement.order_by(QuestionTranscriptMap.__table__.c.id.desc())
     return list(db.exec(statement))
 
 

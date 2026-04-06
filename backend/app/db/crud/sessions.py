@@ -42,7 +42,7 @@ def list_sessions(db: Session, course_id: Optional[int] = None) -> list[SessionR
     if course_id is not None:
         statement = statement.where(SessionRecord.course_id == course_id)
 
-    statement = statement.order_by(SessionRecord.created_at.desc())
+    statement = statement.order_by(SessionRecord.__table__.c.created_at.desc())
 
     return list(db.exec(statement))
 

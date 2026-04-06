@@ -36,7 +36,7 @@ def get_segment_summary_by_id(db: Session, summary_id: int) -> Optional[SegmentS
 
 def list_segment_summaries(db: Session) -> list[SegmentSummary]:
     """获取全部分段小结。"""
-    statement = select(SegmentSummary).order_by(SegmentSummary.created_at.desc())
+    statement = select(SegmentSummary).order_by(SegmentSummary.__table__.c.created_at.desc())
     return list(db.exec(statement))
 
 
@@ -111,7 +111,7 @@ def list_segment_summary_transcript_maps(
         statement = statement.where(SegmentSummaryTranscriptMap.segment_summary_id == segment_summary_id)
     if transcript_id is not None:
         statement = statement.where(SegmentSummaryTranscriptMap.transcript_id == transcript_id)
-    statement = statement.order_by(SegmentSummaryTranscriptMap.id.desc())
+    statement = statement.order_by(SegmentSummaryTranscriptMap.__table__.c.id.desc())
     return list(db.exec(statement))
 
 
