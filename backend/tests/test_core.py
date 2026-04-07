@@ -19,17 +19,15 @@ from app.core.segment_summary import SegmentSummaryProcessor
 class TestQuestionProcessor(unittest.TestCase):
     def setUp(self):
         self.processor = QuestionProcessor()
-        self.processor._question_queue.clear()
 
     def test_initialization(self):
-        self.assertEqual(self.processor.max_questions, self.processor._question_queue._max_size)
-        self.assertTrue(self.processor._question_queue.is_empty())
+        self.assertGreater(self.processor.max_questions, 0)
         self.assertEqual(self.processor.get_questions_flat(), [])
 
     def test_generate_questions_without_context(self):
         result = self.processor.generate_questions("")
         self.assertEqual(result, [])
-        self.assertTrue(self.processor._question_queue.is_empty())
+        self.assertEqual(self.processor.get_questions_flat(), [])
 
     @patch("app.core.question.generate_question")
     def test_generate_questions_success(self, mock_generate_question):
@@ -38,8 +36,9 @@ class TestQuestionProcessor(unittest.TestCase):
         result = self.processor.generate_questions("课堂上下文", count=3)
 
         self.assertEqual(result, ["问题一", "问题二", "问题三"])
-        self.assertEqual(self.processor.get_questions_flat(), ["问题一", "问题二", "问题三"])
-        self.assertEqual(self.processor._question_queue.get_latest_batch()[1], ["问题一", "问题二", "问题三"])
+        self.assertEqual(
+            self.processor.get_questions_flat(), ["问题一", "问题二", "问题三"]
+        )
 
     @patch("app.core.question.generate_question")
     def test_generate_questions_uses_default_worker_count(self, mock_generate_question):
@@ -52,16 +51,19 @@ class TestQuestionProcessor(unittest.TestCase):
         self.assertEqual(result, ["默认问题", "默认问题"])
         self.assertEqual(mock_generate_question.call_count, 2)
 
+    @patch("app.core.question.generate_question")
     @patch("app.core.question.random.choice")
-    def test_get_latest_question_random(self, mock_choice):
-        self.processor._question_queue.add(1.0, ["旧问题"])
-        self.processor._question_queue.add(2.0, ["新问题1", "新问题2"])
-        mock_choice.return_value = "新问题2"
+    def test_get_latest_question_random(self, mock_choice, mock_generate_question):
+        mock_generate_question.side_effect = ["旧问题", "新问题"]
+
+        self.processor.generate_questions("旧上下文", count=1)
+        self.processor.generate_questions("新上下文", count=1)
+        mock_choice.return_value = "新问题"
 
         result = self.processor.get_latest_question_random()
 
-        self.assertEqual(result, "新问题2")
-        mock_choice.assert_called_once_with(["新问题1", "新问题2"])
+        self.assertEqual(result, "新问题")
+        mock_choice.assert_called_once_with(["新问题"])
 
 
 class TestClassContext(unittest.TestCase):
@@ -72,26 +74,50 @@ class TestClassContext(unittest.TestCase):
             self.context = ClassContext()
 
     def test_add_lecture_text(self):
-        with patch("app.core.classcontext.segment_summary_processor.generate_summary", return_value="阶段小结"):
-            self.context.add_lecture_text(1.0, "第一段")
-            self.context.add_lecture_text(2.0, "第二段")
+        self.context.add_lecture_text(1.0, "第一段")
+        self.context.add_lecture_text(2.0, "第二段")
 
         self.assertEqual(self.context.lecture_texts.get_latest_texts(), "第一段第二段")
+        self.assertEqual(self.context.last_summary_index, 0)
 
     @patch("app.core.classcontext.segment_summary_processor.generate_summary")
-    def test_add_lecture_text_generates_summary_when_window_reached(self, mock_generate_summary):
+    def test_generate_summary_if_needed_generates_summary_when_window_reached(
+        self,
+        mock_generate_summary,
+    ):
         mock_generate_summary.return_value = "阶段小结"
 
         self.context.add_lecture_text(1.0, "第一段")
         self.context.add_lecture_text(2.0, "第二段")
+        generated = self.context.generate_summary_if_needed()
 
+        self.assertTrue(generated)
         self.assertEqual(self.context.last_summary_index, 2)
-        self.assertEqual(self.context.history_summaries.get_valid_summaries(10), "阶段小结")
+        self.assertEqual(
+            self.context.history_summaries.get_valid_summaries(10), "阶段小结"
+        )
+
+    @patch("app.core.classcontext.segment_summary_processor.generate_summary")
+    def test_generate_summary_if_needed_returns_false_before_window_reached(
+        self,
+        mock_generate_summary,
+    ):
+        mock_generate_summary.return_value = "阶段小结"
+
+        self.context.add_lecture_text(1.0, "第一段")
+
+        generated = self.context.generate_summary_if_needed()
+
+        self.assertFalse(generated)
+        self.assertEqual(self.context.last_summary_index, 0)
+        self.assertTrue(self.context.history_summaries.is_empty())
 
     def test_get_questioning_texts(self):
         self.context.lecture_texts.add(1.0, "第一段")
         self.context.lecture_texts.add(2.0, "第二段")
-        self.context.history_summaries.add(3.0, {"start": 0, "end": 0, "text": "历史总结"})
+        self.context.history_summaries.add(
+            3.0, {"start": 0, "end": 0, "text": "历史总结"}
+        )
 
         result = self.context.get_questioning_texts()
 

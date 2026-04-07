@@ -23,7 +23,9 @@ class TestAPI(unittest.TestCase):
 
     async def _request(self, method: str, path: str):
         transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as client:
             return await client.request(method, path)
 
     def request(self, method: str, path: str):
@@ -82,6 +84,20 @@ class TestAPI(unittest.TestCase):
         """测试应用 openapi 能力存在"""
         self.assertTrue(hasattr(app, "openapi"))
         self.assertTrue(callable(app.openapi))
+
+    def test_websocket_route_registered(self):
+        """测试 WebSocket 路由已注册"""
+        # 检查路由是否存在
+        websocket_routes = [
+            route
+            for route in app.routes
+            if hasattr(route, "path") and "ws" in route.path
+        ]
+        self.assertGreater(len(websocket_routes), 0, "WebSocket 路由未找到")
+
+        # 检查特定路由
+        ws_paths = {route.path for route in websocket_routes if hasattr(route, "path")}
+        self.assertIn("/ws/session/{session_id}", ws_paths)
 
 
 def main():

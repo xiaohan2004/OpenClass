@@ -21,7 +21,8 @@ class TestPackageExports(unittest.TestCase):
         self.assertTrue(hasattr(app.core, "ClassContext"))
         self.assertTrue(hasattr(app.core, "QuestionProcessor"))
         self.assertTrue(hasattr(app.core, "SegmentSummaryProcessor"))
-        self.assertTrue(hasattr(app.core, "run_main_flow"))
+        self.assertTrue(hasattr(app.core, "handle_audio"))
+        self.assertTrue(hasattr(app.core, "start_background_tasks"))
 
     def test_services_exports(self):
         self.assertTrue(hasattr(app.services, "get_asr_service"))

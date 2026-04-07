@@ -153,19 +153,38 @@ class TestDatabase(unittest.TestCase):
                 description="极限、导数与积分",
                 teacher="张老师",
             )
-            session = create_session(db, seq=1, title="测试课堂")
-            transcript = create_transcript(db, session.id, "这是转写内容", seq=1, start_time=0.0, end_time=3.2)
-            question = create_question(db, session.id, "这里为什么要这样做？", score=0.9)
+            session = create_session(db, course_id=course.id, seq=1, title="测试课堂")
+            transcript = create_transcript(
+                db, session.id, "这是转写内容", seq=1, start_time=0.0, end_time=3.2
+            )
+            question = create_question(
+                db, session.id, "这里为什么要这样做？", score=0.9
+            )
             question_map = link_question_to_transcript(db, question.id, transcript.id)
 
-            summary = create_segment_summary(db, session.id, "这是分段小结", start_time=0.0, end_time=3.2, score=0.8)
-            summary_map = link_segment_summary_to_transcript(db, summary.id, transcript.id)
+            summary = create_segment_summary(
+                db, session.id, "这是分段小结", start_time=0.0, end_time=3.2, score=0.8
+            )
+            summary_map = link_segment_summary_to_transcript(
+                db, summary.id, transcript.id
+            )
 
-            llm_info = create_llm_info(db, "deepseek-chat", input_price=0.1, output_price=0.2)
-            relay_log = create_relay_log(db, request_model_name="deepseek-chat", input_tokens=10, output_tokens=20)
+            llm_info = create_llm_info(
+                db, "deepseek-chat", input_price=0.1, output_price=0.2
+            )
+            relay_log = create_relay_log(
+                db,
+                request_model_name="deepseek-chat",
+                input_tokens=10,
+                output_tokens=20,
+            )
             stats_total = create_stats_total(db, input_token=100, output_token=50)
-            stats_daily = upsert_stats_daily(db, "2026-04-01", input_token=60, output_token=30)
-            stats_hourly = create_stats_hourly(db, "2026-04-01", input_token=10, output_token=5)
+            stats_daily = upsert_stats_daily(
+                db, "2026-04-01", input_token=60, output_token=30
+            )
+            stats_hourly = create_stats_hourly(
+                db, "2026-04-01", input_token=10, output_token=5
+            )
             setting = upsert_setting(db, "app.mode", "dev")
             migration_record = create_migration_record(db, status=1)
 
@@ -199,7 +218,8 @@ class TestDatabase(unittest.TestCase):
         init_db()
 
         with Session(db_session_module.get_engine()) as db:
-            session = create_session(db, title="状态测试")
+            course = create_course(db, code="TEST101", name="状态测试课程")
+            session = create_session(db, course_id=course.id, title="状态测试")
             question = create_question(db, session.id, "状态会变化吗？")
 
             updated_question = mark_question_asked(db, question.id)
@@ -219,7 +239,7 @@ class TestDatabase(unittest.TestCase):
             self.assertEqual(updated_course.teacher, "李老师")
             self.assertEqual(len(list_courses(db)), 1)
 
-            session = create_session(db, seq=2, title="第二节")
+            session = create_session(db, course_id=course.id, seq=2, title="第二节")
             self.assertEqual(get_session_by_id(db, session.id).seq, 2)
             updated_session = update_session(db, session.id, title="第二节课")
             self.assertEqual(updated_session.title, "第二节课")
@@ -233,29 +253,49 @@ class TestDatabase(unittest.TestCase):
 
             question = create_question(db, session.id, "最初问题")
             self.assertEqual(get_question_by_id(db, question.id).text, "最初问题")
-            updated_question = update_question(db, question.id, text="更新问题", score=0.7)
+            updated_question = update_question(
+                db, question.id, text="更新问题", score=0.7
+            )
             self.assertEqual(updated_question.text, "更新问题")
             self.assertEqual(updated_question.score, 0.7)
             self.assertEqual(len(list_questions(db)), 1)
             self.assertEqual(len(list_questions_by_session(db, session.id)), 1)
 
             question_map = link_question_to_transcript(db, question.id, transcript.id)
-            self.assertEqual(get_question_transcript_map_by_id(db, question_map.id).question_id, question.id)
-            self.assertEqual(len(list_question_transcript_maps(db, question_id=question.id)), 1)
+            self.assertEqual(
+                get_question_transcript_map_by_id(db, question_map.id).question_id,
+                question.id,
+            )
+            self.assertEqual(
+                len(list_question_transcript_maps(db, question_id=question.id)), 1
+            )
 
             summary = create_segment_summary(db, session.id, "最初小结")
             self.assertEqual(get_segment_summary_by_id(db, summary.id).text, "最初小结")
-            updated_summary = update_segment_summary(db, summary.id, text="更新小结", score=0.95)
+            updated_summary = update_segment_summary(
+                db, summary.id, text="更新小结", score=0.95
+            )
             self.assertEqual(updated_summary.text, "更新小结")
             self.assertEqual(len(list_segment_summaries(db)), 1)
             self.assertEqual(len(list_segment_summaries_by_session(db, session.id)), 1)
 
-            summary_map = link_segment_summary_to_transcript(db, summary.id, transcript.id)
+            summary_map = link_segment_summary_to_transcript(
+                db, summary.id, transcript.id
+            )
             self.assertEqual(
-                get_segment_summary_transcript_map_by_id(db, summary_map.id).segment_summary_id,
+                get_segment_summary_transcript_map_by_id(
+                    db, summary_map.id
+                ).segment_summary_id,
                 summary.id,
             )
-            self.assertEqual(len(list_segment_summary_transcript_maps(db, segment_summary_id=summary.id)), 1)
+            self.assertEqual(
+                len(
+                    list_segment_summary_transcript_maps(
+                        db, segment_summary_id=summary.id
+                    )
+                ),
+                1,
+            )
 
             llm_info = create_llm_info(db, "model-a", input_price=1.0)
             self.assertEqual(get_llm_info_by_name(db, "model-a").input, 1.0)
@@ -263,7 +303,9 @@ class TestDatabase(unittest.TestCase):
             self.assertEqual(get_llm_info_by_name(db, "model-a").input, 2.0)
             self.assertEqual(len(list_llm_infos(db)), 1)
 
-            relay_log = create_relay_log(db, request_model_name="model-a", input_tokens=11)
+            relay_log = create_relay_log(
+                db, request_model_name="model-a", input_tokens=11
+            )
             self.assertEqual(get_relay_log_by_id(db, relay_log.id).input_tokens, 11)
             updated_relay_log = update_relay_log(db, relay_log.id, error="timeout")
             self.assertEqual(updated_relay_log.error, "timeout")
@@ -271,7 +313,9 @@ class TestDatabase(unittest.TestCase):
 
             stats_total = create_stats_total(db, input_token=10)
             self.assertEqual(get_stats_total_by_id(db, stats_total.id).input_token, 10)
-            updated_stats_total = update_stats_total(db, stats_total.id, output_token=20)
+            updated_stats_total = update_stats_total(
+                db, stats_total.id, output_token=20
+            )
             self.assertEqual(updated_stats_total.output_token, 20)
             self.assertEqual(len(list_stats_totals(db)), 1)
 
@@ -282,8 +326,12 @@ class TestDatabase(unittest.TestCase):
             self.assertEqual(len(list_stats_dailies(db)), 1)
 
             stats_hourly = create_stats_hourly(db, "2026-04-02", input_token=7)
-            self.assertEqual(get_stats_hourly_by_hour(db, stats_hourly.hour).input_token, 7)
-            updated_stats_hourly = update_stats_hourly(db, stats_hourly.hour, output_token=8)
+            self.assertEqual(
+                get_stats_hourly_by_hour(db, stats_hourly.hour).input_token, 7
+            )
+            updated_stats_hourly = update_stats_hourly(
+                db, stats_hourly.hour, output_token=8
+            )
             self.assertEqual(updated_stats_hourly.output_token, 8)
             self.assertEqual(len(list_stats_hourlies(db)), 1)
 
@@ -294,8 +342,12 @@ class TestDatabase(unittest.TestCase):
             self.assertEqual(len(list_settings(db)), 1)
 
             migration_record = create_migration_record(db, status=0)
-            self.assertEqual(get_migration_record_by_version(db, migration_record.version).status, 0)
-            updated_migration = update_migration_record(db, migration_record.version, status=1)
+            self.assertEqual(
+                get_migration_record_by_version(db, migration_record.version).status, 0
+            )
+            updated_migration = update_migration_record(
+                db, migration_record.version, status=1
+            )
             self.assertEqual(updated_migration.status, 1)
             self.assertEqual(len(list_migration_records(db)), 1)
 
