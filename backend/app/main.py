@@ -7,12 +7,12 @@ import logging
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
+from app.api.routes.websocket import router as websocket_router
 from app.db import init_db
 
 # 配置日志
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="OpenClass - 课堂模拟学生提问助手", lifespan=lifespan)
+app.include_router(websocket_router)
 
 
 @app.get("/health")
@@ -37,4 +38,5 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
