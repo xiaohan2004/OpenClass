@@ -189,20 +189,19 @@ CREATE TABLE llm_infos (
 CREATE TABLE relay_logs (
     id INTEGER PRIMARY KEY,
 
-    time INTEGER,
+    time INTEGER NOT NULL,  -- 调用时间
+    service_type TEXT NOT NULL CHECK(service_type IN (
+        'llm', 'tts', 'asr'
+    )), -- 服务类型
     request_model_name TEXT,
-    request_api_key_name TEXT,
-    channel_id INTEGER,
-    channel_name TEXT,
-    actual_model_name TEXT,
-    input_tokens INTEGER,
-    output_tokens INTEGER,
-    ftut INTEGER,
-    use_time INTEGER,
-    cost REAL,
+    input_value REAL DEFAULT 0,
+    output_value REAL DEFAULT 0,
+    latency INTEGER,
+    first_response_time INTEGER,
+    status TEXT CHECK(status IN ('success', 'failed')),
+    error TEXT,
     request_content TEXT,
     response_content TEXT,
-    error TEXT,
     attempts TEXT,
     total_attempts INTEGER
 );
@@ -214,10 +213,12 @@ CREATE TABLE relay_logs (
 CREATE TABLE stats_totals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
 
-    input_token BIGINT,
-    output_token BIGINT,
-    input_cost REAL,
-    output_cost REAL,
+    service_type TEXT NOT NULL CHECK(service_type IN (
+        'llm', 'tts', 'asr'
+    )), -- 服务类型
+
+    input_value BIGINT,
+    output_value BIGINT,
     wait_time BIGINT,
     request_success BIGINT,
     request_failed BIGINT
@@ -230,10 +231,12 @@ CREATE TABLE stats_totals (
 CREATE TABLE stats_dailies (
     date TEXT PRIMARY KEY,
 
-    input_token BIGINT,
-    output_token BIGINT,
-    input_cost REAL,
-    output_cost REAL,
+    service_type TEXT NOT NULL CHECK(service_type IN (
+        'llm', 'tts', 'asr'
+    )), -- 服务类型
+
+    input_value BIGINT,
+    output_value BIGINT,
     wait_time BIGINT,
     request_success BIGINT,
     request_failed BIGINT
@@ -247,10 +250,12 @@ CREATE TABLE stats_hourlies (
     hour INTEGER PRIMARY KEY AUTOINCREMENT,
 
     date TEXT NOT NULL,
-    input_token BIGINT,
-    output_token BIGINT,
-    input_cost REAL,
-    output_cost REAL,
+    service_type TEXT NOT NULL CHECK(service_type IN (
+        'llm', 'tts', 'asr'
+    )), -- 服务类型
+
+    input_value BIGINT,
+    output_value BIGINT,
     wait_time BIGINT,
     request_success BIGINT,
     request_failed BIGINT
@@ -419,7 +424,7 @@ WS /ws/session/{session_id}
     4. TTS音频输出
     ```
     {
-    "type": "audio_out",
+    "type": "tts_out",
     "data": <data>
     }
     ```
