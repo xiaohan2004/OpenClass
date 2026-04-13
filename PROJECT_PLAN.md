@@ -311,23 +311,72 @@ CREATE TABLE migration_records (
 
 ## 接口设计
 
+REST 响应统一约定（适用于所有 REST API）：
+```json
+{
+  "code": 0,
+  "msg": "ok",
+  "data": {}
+}
+```
+- `code`：业务状态码，`0` 表示成功，非 `0` 表示失败。
+- `msg`：业务提示信息。
+- `data`：返回修改后的完整模型（列表接口则为完整模型数组）。
+- 未单独展开 Response 示例的 REST 接口也遵循同一结构。
+- 控制接口与删除接口统一返回空数据：`"data": {}`。
+
 ### 控制接口 - REST API
 用于控制课堂的开始/暂停/结束。
 
 1. 开始课堂
 ```
 POST /api/sessions/{session_id}/start
+
+Request
+{
+  "start_time": 1712995200
+}
+
+Response
+{
+  "code": 0,
+  "msg": "课堂已开始",
+  "data": {}
+}
 ```
 
 2. 暂停课堂
 ```
 POST /api/sessions/{session_id}/pause
+
+Response
+{
+  "code": 0,
+  "msg": "课堂已暂停",
+  "data": {}
+}
 ```
 
 3. 结束课堂
 ```
 POST /api/sessions/{session_id}/end
+
+Request
+{
+  "end_time": 1713002400
+}
+
+Response
+{
+  "code": 0,
+  "msg": "课堂已结束",
+  "data": {}
+}
 ```
+
+说明：
+- `start_time`、`end_time` 由控制接口写入并维护，不通过通用 CRUD 更新。
+- 若请求未携带时间参数，服务端可使用当前服务器时间兜底。
 
 ### 实时数据流 - WebSocket（核心）
 这是系统最关键接口，承载主流程中的交互。
@@ -338,7 +387,7 @@ WS /ws/session/{session_id}
     ```
     {
     "type": "audio_in",
-    "data": <data>
+    "data": <前端音频输入，格式为 bytes>
     }
     ```
 
@@ -378,7 +427,7 @@ WS /ws/session/{session_id}
 ### CRUD接口 - REST API
 用于数据的增删改查。
 
-1. 创建课程
+1. 课程（courses）
 ```
 POST /api/courses
 
@@ -392,27 +441,192 @@ Request
 
 Response
 {
-  "id": 1
+  "code": 0,
+  "msg": "创建成功",
+  "data": {
+    "id": 1,
+    "code": "MATH101",
+    "name": "高等数学",
+    "description": "极限与导数",
+    "teacher": "张老师",
+    "created_at": 1712995000
+  }
 }
 ```
 
-2. 创建课堂（Session）
+```
+GET /api/courses
+```
+
+```
+GET /api/courses/{course_id}
+```
+
+```
+PUT /api/courses/{course_id}
+
+Request
+{
+  "code": "MATH101",
+  "name": "高等数学（更新）",
+  "description": "极限、导数与微分",
+  "teacher": "张老师"
+}
+```
+
+```
+PATCH /api/courses/{course_id}
+
+Request
+{
+  "description": "本学期重点：极限与导数"
+}
+```
+
+```
+DELETE /api/courses/{course_id}
+```
+
+2. 课堂（sessions）
 ```
 POST /api/sessions
 
 Request
 {
   "course_id": 1,
-  "title": "第一节：极限"
+  "title": "第一节：极限",
+  "seq": 1,
+  "config": {
+    "ask_interval_sec": 120,
+    "summary_window_sec": 180
+  }
 }
 
 Response
 {
-  "id": 1
+  "code": 0,
+  "msg": "创建成功",
+  "data": {
+    "id": 1,
+    "course_id": 1,
+    "seq": 1,
+    "title": "第一节：极限",
+    "start_time": null,
+    "end_time": null,
+    "config": {
+      "ask_interval_sec": 120,
+      "summary_window_sec": 180
+    },
+    "created_at": 1712995000
+  }
 }
 ```
 
-剩余的 CRUD 接口都遵循 RESTful 规范
+```
+GET /api/sessions
+```
+
+```
+GET /api/sessions/{session_id}
+```
+
+```
+GET /api/courses/{course_id}/sessions
+```
+
+```
+PUT /api/sessions/{session_id}
+
+Request
+{
+  "title": "第一节：极限与连续",
+  "seq": 1,
+  "config": {
+    "ask_interval_sec": 120,
+    "summary_window_sec": 180
+  }
+}
+```
+
+```
+PATCH /api/sessions/{session_id}
+
+Request
+{
+  "title": "第一节：函数极限"
+}
+```
+
+```
+DELETE /api/sessions/{session_id}
+```
+
+3. 转写（transcripts）
+说明：
+- 转写内容只提供查询接口，写入由后端主流程负责。
+
+```
+GET /api/transcripts
+```
+
+```
+GET /api/transcripts/{transcript_id}
+```
+
+```
+GET /api/sessions/{session_id}/transcripts
+```
+
+4. 提问（questions）
+说明：
+- 提问只提供查询与更新接口，生成/入队/提问等动作由主流程内部完成，不作为独立 CRUD 暴露。
+
+```
+GET /api/questions
+```
+
+```
+GET /api/questions/{question_id}
+```
+
+```
+GET /api/sessions/{session_id}/questions
+```
+
+```
+PATCH /api/questions/{question_id}
+
+Request
+{
+  "status": "asked",
+  "asked_at": 1712995600
+}
+```
+
+5. 分段小结（segment_summaries）
+说明：
+- 分段小结只提供查询接口，生成与维护由后台摘要任务负责。
+
+```
+GET /api/segment-summaries
+```
+
+```
+GET /api/segment-summaries/{summary_id}
+```
+
+```
+GET /api/sessions/{session_id}/segment-summaries
+```
+
+6. 运行日志与统计（只读为主）
+```
+GET /api/relay-logs
+GET /api/relay-logs/{id}
+GET /api/stats/totals
+GET /api/stats/dailies
+GET /api/stats/hourlies
+```
 
 ## 项目目录
 ```
