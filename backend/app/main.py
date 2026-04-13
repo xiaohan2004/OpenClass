@@ -7,6 +7,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
+from app.api.routes.rest import router as rest_router
 from app.api.routes.websocket import router as websocket_router
 from app.db import init_db
 
@@ -27,6 +28,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="OpenClass - 课堂模拟学生提问助手", lifespan=lifespan)
+app.include_router(rest_router)
 app.include_router(websocket_router)
 
 

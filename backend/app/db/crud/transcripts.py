@@ -34,6 +34,14 @@ def get_transcript_by_id(db: Session, transcript_id: int) -> Optional[Transcript
     return db.get(Transcript, transcript_id)
 
 
+def list_transcripts(db: Session) -> list[Transcript]:
+    """获取全部转写片段。"""
+    statement = select(Transcript).order_by(
+        Transcript.__table__.c.created_at.desc()
+    )
+    return list(db.exec(statement))
+
+
 def list_transcripts_by_session(db: Session, session_id: int) -> list[Transcript]:
     """按课堂获取转写片段。"""
     statement = (

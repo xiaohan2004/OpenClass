@@ -65,6 +65,7 @@ from .transcripts import (
     create_transcript,
     delete_transcript,
     get_transcript_by_id,
+    list_transcripts,
     list_transcripts_by_session,
     update_transcript,
 )
@@ -126,6 +127,7 @@ __all__ = [
     "list_stats_dailies",
     "list_stats_hourlies",
     "list_stats_totals",
+    "list_transcripts",
     "list_transcripts_by_session",
     "mark_question_asked",
     "update_course",

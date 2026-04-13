@@ -21,7 +21,7 @@ def create_session(
         course_id=course_id,
         seq=seq,
         title=title,
-        start_time=start_time or now_ts(),
+        start_time=start_time,
         config=config,
     )
     db.add(session_record)
