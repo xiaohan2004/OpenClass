@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import logging
-import dashscope
+import time
 from typing import Any, Optional
 from urllib.request import urlopen
 
+import dashscope
+
 from app.config import get_settings
+from app.services.metrics import record_service_usage
+from app.utils.time import now_ts
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +78,8 @@ class TTSService:
         if not normalized_text:
             raise ValueError("text 不能为空")
 
+        request_start_time = now_ts()
+        start_time = time.perf_counter()
         api_key = settings.qwen_api_key
         if not api_key:
             raise ValueError("Qwen_API_Key 未配置，无法调用 TTS 服务")
@@ -96,16 +102,63 @@ class TTSService:
             response = dashscope.MultiModalConversation.call(**call_kwargs)
         except Exception as exc:
             logger.exception("TTS 合成失败")
+            record_service_usage(
+                service_type="tts",
+                request_model_name=self.model,
+                input_value=len(normalized_text),
+                output_value=0,
+                start_time=request_start_time,
+                latency=int((time.perf_counter() - start_time) * 1000),
+                status="failed",
+                error=str(exc),
+                request_content=normalized_text,
+            )
             raise RuntimeError(f"TTS 合成失败: {exc}") from exc
 
         status_code = getattr(response, "status_code", None)
         if status_code is not None and status_code != 200:
             message = getattr(response, "message", "未知错误")
+            record_service_usage(
+                service_type="tts",
+                request_model_name=self.model,
+                input_value=len(normalized_text),
+                output_value=0,
+                start_time=request_start_time,
+                latency=int((time.perf_counter() - start_time) * 1000),
+                status="failed",
+                error=message,
+                request_content=normalized_text,
+                response_content=response,
+            )
             raise RuntimeError(f"TTS 请求失败: {message}")
 
         audio_url = _extract_audio_url(response)
         if not audio_url:
-            raise RuntimeError("TTS 服务返回成功，但未解析到音频地址")
+            message = "TTS 服务返回成功，但未解析到音频地址"
+            record_service_usage(
+                service_type="tts",
+                request_model_name=self.model,
+                input_value=len(normalized_text),
+                output_value=0,
+                start_time=request_start_time,
+                latency=int((time.perf_counter() - start_time) * 1000),
+                status="failed",
+                error=message,
+                request_content=normalized_text,
+            )
+            raise RuntimeError(message)
+
+        record_service_usage(
+            service_type="tts",
+            request_model_name=self.model,
+            input_value=len(normalized_text),
+            output_value=0,
+            start_time=request_start_time,
+            latency=int((time.perf_counter() - start_time) * 1000),
+            status="success",
+            request_content=normalized_text,
+            response_content=response,
+        )
         return audio_url
 
     def synthesize(self, text: str) -> bytes:

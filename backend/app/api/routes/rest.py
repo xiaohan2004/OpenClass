@@ -191,22 +191,24 @@ class SegmentSummaryRead(BaseModel):
 
 
 class RelayLogRead(BaseModel):
-    """请求日志输出结构。"""
+    """请求日志输出结构。
+
+    说明：
+    - request_content: 请求体
+    - response_content: 响应体
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    time: int | None = None
+    time: int
+    service_type: str
     request_model_name: str | None = None
-    request_api_key_name: str | None = None
-    channel_id: int | None = None
-    channel_name: str | None = None
-    actual_model_name: str | None = None
-    input_tokens: int | None = None
-    output_tokens: int | None = None
-    ftut: int | None = None
-    use_time: int | None = None
-    cost: float | None = None
+    input_value: float | None = None
+    output_value: float | None = None
+    latency: int | None = None
+    first_response_time: int | None = None
+    status: str | None = None
     request_content: str | None = None
     response_content: str | None = None
     error: str | None = None
@@ -220,10 +222,9 @@ class StatsTotalRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    input_token: int | None = None
-    output_token: int | None = None
-    input_cost: float | None = None
-    output_cost: float | None = None
+    service_type: str
+    input_value: int | None = None
+    output_value: int | None = None
     wait_time: int | None = None
     request_success: int | None = None
     request_failed: int | None = None
@@ -235,10 +236,9 @@ class StatsDailyRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     date: str
-    input_token: int | None = None
-    output_token: int | None = None
-    input_cost: float | None = None
-    output_cost: float | None = None
+    service_type: str
+    input_value: int | None = None
+    output_value: int | None = None
     wait_time: int | None = None
     request_success: int | None = None
     request_failed: int | None = None
@@ -251,10 +251,9 @@ class StatsHourlyRead(BaseModel):
 
     hour: int
     date: str
-    input_token: int | None = None
-    output_token: int | None = None
-    input_cost: float | None = None
-    output_cost: float | None = None
+    service_type: str
+    input_value: int | None = None
+    output_value: int | None = None
     wait_time: int | None = None
     request_success: int | None = None
     request_failed: int | None = None
@@ -299,7 +298,9 @@ def _serialize_model(model: Any, schema: type[BaseModel]) -> dict[str, Any]:
     return jsonable_encoder(data)
 
 
-def _serialize_models(models: list[Any], schema: type[BaseModel]) -> list[dict[str, Any]]:
+def _serialize_models(
+    models: list[Any], schema: type[BaseModel]
+) -> list[dict[str, Any]]:
     """序列化模型列表。"""
     return [_serialize_model(model, schema) for model in models]
 
@@ -402,12 +403,16 @@ def list_course_sessions_endpoint(
     course_id: int, db: Session = Depends(get_db_session)
 ):
     _require_course(db, course_id)
-    return _success(_serialize_models(list_sessions(db, course_id=course_id), SessionRead))
+    return _success(
+        _serialize_models(list_sessions(db, course_id=course_id), SessionRead)
+    )
 
 
 @router.put("/sessions/{session_id}")
 def update_session_endpoint(
-    session_id: int, payload: SessionUpdatePayload, db: Session = Depends(get_db_session)
+    session_id: int,
+    payload: SessionUpdatePayload,
+    db: Session = Depends(get_db_session),
 ):
     _require_session(db, session_id)
     session_record = update_session(
@@ -446,7 +451,11 @@ def start_session_endpoint(
     db: Session = Depends(get_db_session),
 ):
     _require_session(db, session_id)
-    start_time = now_ts() if payload is None or payload.start_time is None else payload.start_time
+    start_time = (
+        now_ts()
+        if payload is None or payload.start_time is None
+        else payload.start_time
+    )
     update_session(db, session_id, start_time=start_time)
     return _success({}, "课堂已开始")
 
@@ -464,7 +473,9 @@ def end_session_endpoint(
     db: Session = Depends(get_db_session),
 ):
     _require_session(db, session_id)
-    end_time = now_ts() if payload is None or payload.end_time is None else payload.end_time
+    end_time = (
+        now_ts() if payload is None or payload.end_time is None else payload.end_time
+    )
     close_session(db, session_id, end_time=end_time)
     return _success({}, "课堂已结束")
 
@@ -487,7 +498,9 @@ def list_session_transcripts_endpoint(
     session_id: int, db: Session = Depends(get_db_session)
 ):
     _require_session(db, session_id)
-    return _success(_serialize_models(list_transcripts_by_session(db, session_id), TranscriptRead))
+    return _success(
+        _serialize_models(list_transcripts_by_session(db, session_id), TranscriptRead)
+    )
 
 
 @router.get("/questions")
@@ -506,12 +519,16 @@ def list_session_questions_endpoint(
     session_id: int, db: Session = Depends(get_db_session)
 ):
     _require_session(db, session_id)
-    return _success(_serialize_models(list_questions_by_session(db, session_id), QuestionRead))
+    return _success(
+        _serialize_models(list_questions_by_session(db, session_id), QuestionRead)
+    )
 
 
 @router.patch("/questions/{question_id}")
 def patch_question_endpoint(
-    question_id: int, payload: QuestionPatchPayload, db: Session = Depends(get_db_session)
+    question_id: int,
+    payload: QuestionPatchPayload,
+    db: Session = Depends(get_db_session),
 ):
     _require_question(db, question_id)
     updates = payload.model_dump(exclude_unset=True, exclude_none=True)

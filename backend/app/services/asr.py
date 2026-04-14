@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import base64
+import io
 import logging
+import time
+import wave
 from typing import Any, Optional
+
 import dashscope
+from mutagen import File as mutagen_file
 
 from app.config import get_settings
+from app.services.metrics import record_service_usage
+from app.utils.time import now_ts
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +99,30 @@ def _extract_text_from_response(response: Any) -> str:
     return "\n".join(parts).strip()
 
 
+def _get_audio_duration_seconds(audio_bytes: bytes) -> float:
+    """尽量从音频中解析时长（秒）。优先多格式解析，失败后降级到 WAV。"""
+    if mutagen_file is not None:
+        try:
+            audio_file = mutagen_file(io.BytesIO(audio_bytes))
+            info = getattr(audio_file, "info", None)
+            length = getattr(info, "length", None) if info is not None else None
+            if isinstance(length, (int, float)) and length > 0:
+                return float(length)
+        except Exception:
+            pass
+
+    try:
+        with wave.open(io.BytesIO(audio_bytes), "rb") as wav_file:
+            frame_rate = wav_file.getframerate()
+            frame_count = wav_file.getnframes()
+            if frame_rate <= 0:
+                return 0.0
+            return frame_count / frame_rate
+    except Exception:
+        logger.debug("音频时长解析失败，按 0 秒记录")
+        return 0.0
+
+
 class ASRService:
     """音频转文字服务"""
 
@@ -111,6 +142,9 @@ class ASRService:
         if not audio_bytes:
             raise ValueError("audio_bytes 不能为空")
 
+        audio_duration_seconds = _get_audio_duration_seconds(audio_bytes)
+        request_start_time = now_ts()
+        start_time = time.perf_counter()
         api_key = settings.qwen_api_key
         if not api_key:
             raise ValueError("Qwen_API_Key 未配置，无法调用 ASR 服务")
@@ -132,16 +166,60 @@ class ASRService:
             )
         except Exception as exc:
             logger.exception("ASR 转录失败")
+            record_service_usage(
+                service_type="asr",
+                request_model_name=self.model,
+                input_value=audio_duration_seconds,
+                output_value=0,
+                start_time=request_start_time,
+                latency=int((time.perf_counter() - start_time) * 1000),
+                status="failed",
+                error=str(exc),
+            )
             raise RuntimeError(f"ASR 转录失败: {exc}") from exc
 
         status_code = getattr(response, "status_code", None)
         if status_code is not None and status_code != 200:
             message = getattr(response, "message", "未知错误")
+            record_service_usage(
+                service_type="asr",
+                request_model_name=self.model,
+                input_value=audio_duration_seconds,
+                output_value=0,
+                start_time=request_start_time,
+                latency=int((time.perf_counter() - start_time) * 1000),
+                status="failed",
+                error=message,
+                response_content=response,
+            )
             raise RuntimeError(f"ASR 请求失败: {message}")
 
         text = _extract_text_from_response(response)
         if not text:
-            raise RuntimeError("ASR 服务返回成功，但未解析到转录文本")
+            message = "ASR 服务返回成功，但未解析到转录文本"
+            record_service_usage(
+                service_type="asr",
+                request_model_name=self.model,
+                input_value=audio_duration_seconds,
+                output_value=0,
+                start_time=request_start_time,
+                latency=int((time.perf_counter() - start_time) * 1000),
+                status="failed",
+                error=message,
+            )
+            raise RuntimeError(message)
+
+        record_service_usage(
+            service_type="asr",
+            request_model_name=self.model,
+            input_value=audio_duration_seconds,
+            output_value=0,
+            start_time=request_start_time,
+            latency=int((time.perf_counter() - start_time) * 1000),
+            status="success",
+            request_content=f"audio_duration_seconds={audio_duration_seconds}",
+            response_content=response,
+        )
 
         logger.info("ASR 转录成功，文本长度=%s", len(text))
         return text

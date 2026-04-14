@@ -1,4 +1,4 @@
-"""设置与统计类 CRUD。"""
+"""设置、日志与统计类 CRUD。"""
 
 from typing import Optional
 
@@ -156,9 +156,23 @@ def get_stats_total_by_id(db: Session, stats_total_id: int) -> Optional[StatsTot
     return db.get(StatsTotal, stats_total_id)
 
 
+def get_stats_total_by_service_type(
+    db: Session, service_type: str
+) -> Optional[StatsTotal]:
+    """按服务类型获取全量累计统计。"""
+    statement = (
+        select(StatsTotal)
+        .where(StatsTotal.service_type == service_type)
+        .order_by(StatsTotal.__table__.c.id.desc())
+    )
+    return db.exec(statement).first()
+
+
 def list_stats_totals(db: Session) -> list[StatsTotal]:
     """获取全部全量累计统计。"""
-    statement = select(StatsTotal).order_by(StatsTotal.__table__.c.id.desc())
+    statement = select(StatsTotal).order_by(
+        StatsTotal.__table__.c.service_type, StatsTotal.__table__.c.id.desc()
+    )
     return list(db.exec(statement))
 
 
@@ -167,6 +181,25 @@ def update_stats_total(db: Session, stats_total_id: int, **kwargs) -> Optional[S
     stats_total = db.get(StatsTotal, stats_total_id)
     if stats_total is None:
         return None
+
+    for key, value in kwargs.items():
+        setattr(stats_total, key, value)
+
+    db.add(stats_total)
+    db.commit()
+    db.refresh(stats_total)
+    return stats_total
+
+
+def upsert_stats_total(
+    db: Session,
+    service_type: str,
+    **kwargs,
+) -> StatsTotal:
+    """按服务类型写入或更新全量累计统计。"""
+    stats_total = get_stats_total_by_service_type(db, service_type)
+    if stats_total is None:
+        stats_total = StatsTotal(service_type=service_type)
 
     for key, value in kwargs.items():
         setattr(stats_total, key, value)
@@ -188,11 +221,11 @@ def delete_stats_total(db: Session, stats_total_id: int) -> bool:
     return True
 
 
-def upsert_stats_daily(db: Session, date: int, **kwargs) -> StatsDaily:
-    """写入或更新按日统计。"""
-    stats_daily = db.get(StatsDaily, date)
+def upsert_stats_daily(db: Session, date: str, service_type: str, **kwargs) -> StatsDaily:
+    """按日期和服务类型写入或更新按日统计。"""
+    stats_daily = db.get(StatsDaily, (date, service_type))
     if stats_daily is None:
-        stats_daily = StatsDaily(date=date)
+        stats_daily = StatsDaily(date=date, service_type=service_type)
 
     for key, value in kwargs.items():
         setattr(stats_daily, key, value)
@@ -203,20 +236,25 @@ def upsert_stats_daily(db: Session, date: int, **kwargs) -> StatsDaily:
     return stats_daily
 
 
-def get_stats_daily_by_date(db: Session, date: int) -> Optional[StatsDaily]:
-    """按日期获取按日统计。"""
-    return db.get(StatsDaily, date)
+def get_stats_daily_by_date(
+    db: Session, date: str, service_type: str
+) -> Optional[StatsDaily]:
+    """按日期和服务类型获取按日统计。"""
+    return db.get(StatsDaily, (date, service_type))
 
 
 def list_stats_dailies(db: Session) -> list[StatsDaily]:
     """获取全部按日统计。"""
-    statement = select(StatsDaily).order_by(StatsDaily.__table__.c.date.desc())
+    statement = select(StatsDaily).order_by(
+        StatsDaily.__table__.c.date.desc(),
+        StatsDaily.__table__.c.service_type,
+    )
     return list(db.exec(statement))
 
 
-def delete_stats_daily(db: Session, date: int) -> bool:
+def delete_stats_daily(db: Session, date: str, service_type: str) -> bool:
     """删除按日统计。"""
-    stats_daily = db.get(StatsDaily, date)
+    stats_daily = db.get(StatsDaily, (date, service_type))
     if stats_daily is None:
         return False
 
@@ -225,29 +263,62 @@ def delete_stats_daily(db: Session, date: int) -> bool:
     return True
 
 
-def create_stats_hourly(db: Session, date: int, **kwargs) -> StatsHourly:
+def create_stats_hourly(db: Session, date: str, hour: int, service_type: str, **kwargs) -> StatsHourly:
     """创建按小时统计。"""
-    stats_hourly = StatsHourly(date=date, **kwargs)
+    stats_hourly = StatsHourly(date=date, hour=hour, service_type=service_type, **kwargs)
     db.add(stats_hourly)
     db.commit()
     db.refresh(stats_hourly)
     return stats_hourly
 
 
-def get_stats_hourly_by_hour(db: Session, hour: int) -> Optional[StatsHourly]:
-    """按主键获取按小时统计。"""
-    return db.get(StatsHourly, hour)
+def upsert_stats_hourly(
+    db: Session,
+    date: str,
+    hour: int,
+    service_type: str,
+    **kwargs,
+) -> StatsHourly:
+    """按日期、小时和服务类型写入或更新按小时统计。"""
+    stats_hourly = db.get(StatsHourly, (date, hour, service_type))
+    if stats_hourly is None:
+        stats_hourly = StatsHourly(date=date, hour=hour, service_type=service_type)
+
+    for key, value in kwargs.items():
+        setattr(stats_hourly, key, value)
+
+    db.add(stats_hourly)
+    db.commit()
+    db.refresh(stats_hourly)
+    return stats_hourly
+
+
+def get_stats_hourly_by_hour(
+    db: Session, date: str, hour: int, service_type: str
+) -> Optional[StatsHourly]:
+    """按日期、小时和服务类型获取按小时统计。"""
+    return db.get(StatsHourly, (date, hour, service_type))
 
 
 def list_stats_hourlies(db: Session) -> list[StatsHourly]:
     """获取全部按小时统计。"""
-    statement = select(StatsHourly).order_by(StatsHourly.__table__.c.hour.desc())
+    statement = select(StatsHourly).order_by(
+        StatsHourly.__table__.c.date.desc(),
+        StatsHourly.__table__.c.hour.desc(),
+        StatsHourly.__table__.c.service_type,
+    )
     return list(db.exec(statement))
 
 
-def update_stats_hourly(db: Session, hour: int, **kwargs) -> Optional[StatsHourly]:
+def update_stats_hourly(
+    db: Session,
+    date: str,
+    hour: int,
+    service_type: str,
+    **kwargs,
+) -> Optional[StatsHourly]:
     """更新按小时统计。"""
-    stats_hourly = db.get(StatsHourly, hour)
+    stats_hourly = db.get(StatsHourly, (date, hour, service_type))
     if stats_hourly is None:
         return None
 
@@ -260,9 +331,9 @@ def update_stats_hourly(db: Session, hour: int, **kwargs) -> Optional[StatsHourl
     return stats_hourly
 
 
-def delete_stats_hourly(db: Session, hour: int) -> bool:
+def delete_stats_hourly(db: Session, date: str, hour: int, service_type: str) -> bool:
     """删除按小时统计。"""
-    stats_hourly = db.get(StatsHourly, hour)
+    stats_hourly = db.get(StatsHourly, (date, hour, service_type))
     if stats_hourly is None:
         return False
 

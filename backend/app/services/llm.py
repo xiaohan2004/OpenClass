@@ -3,6 +3,7 @@ LLM 服务层 - DeepSeek 集成
 """
 
 import logging
+import time
 
 from openai import OpenAI
 
@@ -11,6 +12,8 @@ from app.config import (
     SYSTEM_PROMPT_SEGMENT_SUMMARY,
     get_settings,
 )
+from app.services.metrics import record_service_usage
+from app.utils.time import now_ts
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +36,18 @@ def get_llm_client() -> OpenAI:
     return _llm_client
 
 
+def _usage_value(usage, key: str) -> int:
+    """从响应 usage 中提取数值。"""
+    if usage is None:
+        return 0
+
+    value = getattr(usage, key, None)
+    if value is None and isinstance(usage, dict):
+        value = usage.get(key)
+
+    return int(value or 0)
+
+
 def generate_question(context: str) -> str:
     """
     根据教师讲课文本生成学生可能提出的问题
@@ -45,6 +60,8 @@ def generate_question(context: str) -> str:
     """
     settings = get_settings()
     client = get_llm_client()
+    request_start_time = now_ts()
+    start_time = time.perf_counter()
 
     try:
         response = client.chat.completions.create(
@@ -56,9 +73,33 @@ def generate_question(context: str) -> str:
             max_tokens=settings.max_tokens,
             temperature=settings.temperature,
         )
-        return response.choices[0].message.content
+        content = response.choices[0].message.content
+        usage = getattr(response, "usage", None)
+        record_service_usage(
+            service_type="llm",
+            request_model_name=settings.model_name,
+            input_value=_usage_value(usage, "prompt_tokens") or len(context),
+            output_value=_usage_value(usage, "completion_tokens") or len(content or ""),
+            start_time=request_start_time,
+            latency=int((time.perf_counter() - start_time) * 1000),
+            status="success",
+            request_content=context,
+            response_content=response,
+        )
+        return content
     except Exception as e:
         logger.error("问题生成失败: %s", e)
+        record_service_usage(
+            service_type="llm",
+            request_model_name=settings.model_name,
+            input_value=len(context),
+            output_value=0,
+            start_time=request_start_time,
+            latency=int((time.perf_counter() - start_time) * 1000),
+            status="failed",
+            error=str(e),
+            request_content=context,
+        )
         raise
 
 
@@ -74,6 +115,8 @@ def generate_segment_summary(context: str) -> str:
     """
     settings = get_settings()
     client = get_llm_client()
+    request_start_time = now_ts()
+    start_time = time.perf_counter()
 
     try:
         response = client.chat.completions.create(
@@ -85,7 +128,31 @@ def generate_segment_summary(context: str) -> str:
             max_tokens=settings.max_tokens,
             temperature=settings.temperature,
         )
-        return response.choices[0].message.content
+        content = response.choices[0].message.content
+        usage = getattr(response, "usage", None)
+        record_service_usage(
+            service_type="llm",
+            request_model_name=settings.model_name,
+            input_value=_usage_value(usage, "prompt_tokens") or len(context),
+            output_value=_usage_value(usage, "completion_tokens") or len(content or ""),
+            start_time=request_start_time,
+            latency=int((time.perf_counter() - start_time) * 1000),
+            status="success",
+            request_content=context,
+            response_content=response,
+        )
+        return content
     except Exception as e:
         logger.error("阶段小结生成失败: %s", e)
+        record_service_usage(
+            service_type="llm",
+            request_model_name=settings.model_name,
+            input_value=len(context),
+            output_value=0,
+            start_time=request_start_time,
+            latency=int((time.perf_counter() - start_time) * 1000),
+            status="failed",
+            error=str(e),
+            request_content=context,
+        )
         raise

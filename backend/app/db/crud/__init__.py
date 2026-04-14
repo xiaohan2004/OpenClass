@@ -44,6 +44,7 @@ from .settings import (
     get_migration_record_by_version,
     get_relay_log_by_id,
     get_setting,
+    get_stats_total_by_service_type,
     get_stats_daily_by_date,
     get_stats_hourly_by_hour,
     get_stats_total_by_id,
@@ -59,7 +60,9 @@ from .settings import (
     update_stats_hourly,
     update_stats_total,
     upsert_setting,
+    upsert_stats_total,
     upsert_stats_daily,
+    upsert_stats_hourly,
 )
 from .transcripts import (
     create_transcript,
@@ -106,6 +109,7 @@ __all__ = [
     "get_segment_summary_transcript_map_by_id",
     "get_session_by_id",
     "get_setting",
+    "get_stats_total_by_service_type",
     "get_stats_daily_by_date",
     "get_stats_hourly_by_hour",
     "get_stats_total_by_id",
@@ -140,5 +144,7 @@ __all__ = [
     "update_stats_total",
     "update_transcript",
     "upsert_setting",
+    "upsert_stats_total",
     "upsert_stats_daily",
+    "upsert_stats_hourly",
 ]

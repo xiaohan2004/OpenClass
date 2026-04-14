@@ -136,17 +136,14 @@ class RelayLog(SQLModel, table=True):
     __tablename__ = "relay_logs"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    time: Optional[int] = Field(default=None)
+    time: int = Field(nullable=False)
+    service_type: str = Field(nullable=False, index=True)
     request_model_name: Optional[str] = Field(default=None)
-    request_api_key_name: Optional[str] = Field(default=None)
-    channel_id: Optional[int] = Field(default=None)
-    channel_name: Optional[str] = Field(default=None)
-    actual_model_name: Optional[str] = Field(default=None)
-    input_tokens: Optional[int] = Field(default=None)
-    output_tokens: Optional[int] = Field(default=None)
-    ftut: Optional[int] = Field(default=None)
-    use_time: Optional[int] = Field(default=None)
-    cost: Optional[float] = Field(default=None)
+    input_value: Optional[float] = Field(default=0)
+    output_value: Optional[float] = Field(default=0)
+    latency: Optional[int] = Field(default=None)
+    first_response_time: Optional[int] = Field(default=None)
+    status: Optional[str] = Field(default=None)
     request_content: Optional[str] = Field(default=None)
     response_content: Optional[str] = Field(default=None)
     error: Optional[str] = Field(default=None)
@@ -160,13 +157,12 @@ class StatsTotal(SQLModel, table=True):
     __tablename__ = "stats_totals"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    input_token: Optional[int] = Field(default=None)
-    output_token: Optional[int] = Field(default=None)
-    input_cost: Optional[float] = Field(default=None)
-    output_cost: Optional[float] = Field(default=None)
+    service_type: str = Field(nullable=False, index=True)
+    input_value: Optional[int] = Field(default=0)
+    output_value: Optional[int] = Field(default=0)
     wait_time: Optional[int] = Field(default=None)
-    request_success: Optional[int] = Field(default=None)
-    request_failed: Optional[int] = Field(default=None)
+    request_success: Optional[int] = Field(default=0)
+    request_failed: Optional[int] = Field(default=0)
 
 
 class StatsDaily(SQLModel, table=True):
@@ -175,13 +171,12 @@ class StatsDaily(SQLModel, table=True):
     __tablename__ = "stats_dailies"
 
     date: str = Field(primary_key=True)
-    input_token: Optional[int] = Field(default=None)
-    output_token: Optional[int] = Field(default=None)
-    input_cost: Optional[float] = Field(default=None)
-    output_cost: Optional[float] = Field(default=None)
+    service_type: str = Field(primary_key=True)
+    input_value: Optional[int] = Field(default=0)
+    output_value: Optional[int] = Field(default=0)
     wait_time: Optional[int] = Field(default=None)
-    request_success: Optional[int] = Field(default=None)
-    request_failed: Optional[int] = Field(default=None)
+    request_success: Optional[int] = Field(default=0)
+    request_failed: Optional[int] = Field(default=0)
 
 
 class StatsHourly(SQLModel, table=True):
@@ -189,15 +184,14 @@ class StatsHourly(SQLModel, table=True):
 
     __tablename__ = "stats_hourlies"
 
-    hour: Optional[int] = Field(default=None, primary_key=True)
-    date: str = Field(nullable=False)
-    input_token: Optional[int] = Field(default=None)
-    output_token: Optional[int] = Field(default=None)
-    input_cost: Optional[float] = Field(default=None)
-    output_cost: Optional[float] = Field(default=None)
+    date: str = Field(primary_key=True)
+    hour: int = Field(primary_key=True)
+    service_type: str = Field(primary_key=True)
+    input_value: Optional[int] = Field(default=0)
+    output_value: Optional[int] = Field(default=0)
     wait_time: Optional[int] = Field(default=None)
-    request_success: Optional[int] = Field(default=None)
-    request_failed: Optional[int] = Field(default=None)
+    request_success: Optional[int] = Field(default=0)
+    request_failed: Optional[int] = Field(default=0)
 
 
 class Setting(SQLModel, table=True):

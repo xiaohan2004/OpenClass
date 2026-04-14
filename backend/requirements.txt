@@ -4,3 +4,4 @@ openai==1.3.0
 pydantic-settings==2.1.0
 python-dotenv==1.0.0
 sqlmodel==0.0.16
+mutagen==1.47.0
