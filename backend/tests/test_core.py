@@ -91,7 +91,9 @@ class TestClassContext(unittest.TestCase):
         self.context.add_lecture_text(2.0, "第二段")
         generated = self.context.generate_summary_if_needed()
 
-        self.assertTrue(generated)
+        self.assertEqual(
+            generated, {"text": "阶段小结", "start": 0, "end": 2}
+        )
         self.assertEqual(self.context.last_summary_index, 2)
         self.assertEqual(
             self.context.history_summaries.get_valid_summaries(10), "阶段小结"
@@ -108,7 +110,7 @@ class TestClassContext(unittest.TestCase):
 
         generated = self.context.generate_summary_if_needed()
 
-        self.assertFalse(generated)
+        self.assertIsNone(generated)
         self.assertEqual(self.context.last_summary_index, 0)
         self.assertTrue(self.context.history_summaries.is_empty())
 

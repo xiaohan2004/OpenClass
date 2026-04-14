@@ -109,13 +109,23 @@ class TestAPI(unittest.TestCase):
             )
             relay_log = create_relay_log(
                 db,
+                time=1712995200,
+                service_type="llm",
                 request_model_name="deepseek-chat",
-                input_tokens=12,
-                output_tokens=34,
+                input_value=12,
+                output_value=34,
+                latency=200,
+                status="success",
             )
-            stats_total = create_stats_total(db, input_token=100, output_token=50)
-            upsert_stats_daily(db, "2026-04-13", input_token=60, output_token=30)
-            create_stats_hourly(db, "2026-04-13", input_token=10, output_token=5)
+            stats_total = create_stats_total(
+                db, service_type="llm", input_value=100, output_value=50
+            )
+            upsert_stats_daily(
+                db, "2026-04-13", "llm", input_value=60, output_value=30
+            )
+            create_stats_hourly(
+                db, "2026-04-13", 8, "llm", input_value=10, output_value=5
+            )
 
             return {
                 "course_id": course.id,
@@ -387,6 +397,7 @@ class TestAPI(unittest.TestCase):
             "GET", f"/api/relay-logs/{self.seed_data['relay_log_id']}"
         )
         self.assertEqual(relay_log_detail.status_code, 200)
+        self.assertEqual(relay_log_detail.json()["data"]["service_type"], "llm")
 
         stats_totals_response = self.request("GET", "/api/stats/totals")
         self.assertEqual(stats_totals_response.status_code, 200)
@@ -394,14 +405,23 @@ class TestAPI(unittest.TestCase):
             stats_totals_response.json()["data"][0]["id"],
             self.seed_data["stats_total_id"],
         )
+        self.assertEqual(
+            stats_totals_response.json()["data"][0]["service_type"], "llm"
+        )
 
         stats_dailies_response = self.request("GET", "/api/stats/dailies")
         self.assertEqual(stats_dailies_response.status_code, 200)
         self.assertEqual(stats_dailies_response.json()["data"][0]["date"], "2026-04-13")
+        self.assertEqual(
+            stats_dailies_response.json()["data"][0]["service_type"], "llm"
+        )
 
         stats_hourlies_response = self.request("GET", "/api/stats/hourlies")
         self.assertEqual(stats_hourlies_response.status_code, 200)
         self.assertEqual(stats_hourlies_response.json()["data"][0]["date"], "2026-04-13")
+        self.assertEqual(
+            stats_hourlies_response.json()["data"][0]["service_type"], "llm"
+        )
 
     def test_not_found_resources_return_404(self):
         """不存在的资源应返回 404。"""

@@ -80,21 +80,21 @@ class TestTextQueues(unittest.TestCase):
 
 
 class TestSafeWebSocket(unittest.IsolatedAsyncioTestCase):
-    async def test_send_locks_before_sending(self):
-        """测试 SafeWebSocket.send 在发送前获取锁。"""
+    async def test_send_json_locks_before_sending(self):
+        """测试 SafeWebSocket.send_json 在发送前获取锁。"""
         mock_ws = MagicMock()
         mock_ws.send_json = AsyncMock()
 
         safe_ws = SafeWebSocket(mock_ws)
         data = {"type": "test", "data": "content"}
 
-        await safe_ws.send(data)
+        await safe_ws.send_json(data)
 
         # 验证 send_json 被调用
         mock_ws.send_json.assert_called_once_with(data)
 
-    async def test_send_is_concurrent_safe(self):
-        """测试并发调用 send 时，锁保证串行执行。"""
+    async def test_send_json_is_concurrent_safe(self):
+        """测试并发调用 send_json 时，锁保证串行执行。"""
         mock_ws = MagicMock()
         send_order = []
 
@@ -108,23 +108,23 @@ class TestSafeWebSocket(unittest.IsolatedAsyncioTestCase):
 
         # 并发发送多个消息
         await asyncio.gather(
-            safe_ws.send({"id": 1}),
-            safe_ws.send({"id": 2}),
-            safe_ws.send({"id": 3}),
+            safe_ws.send_json({"id": 1}),
+            safe_ws.send_json({"id": 2}),
+            safe_ws.send_json({"id": 3}),
         )
 
         # 验证消息按顺序发送（无并发冲突）
         self.assertEqual(len(send_order), 3)
 
-    async def test_send_handles_exception(self):
-        """测试发送失败时异常向上传播。"""
+    async def test_send_json_handles_exception(self):
+        """测试 send_json 失败时异常向上传播。"""
         mock_ws = MagicMock()
         mock_ws.send_json = AsyncMock(side_effect=RuntimeError("Send failed"))
 
         safe_ws = SafeWebSocket(mock_ws)
 
         with self.assertRaises(RuntimeError):
-            await safe_ws.send({"type": "test"})
+            await safe_ws.send_json({"type": "test"})
 
 
 if __name__ == "__main__":

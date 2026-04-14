@@ -44,12 +44,14 @@ class TestLLMIntegration(unittest.TestCase):
         self.assertIs(client, mock_client)
         mock_openai.assert_called_once_with(api_key="test-key", base_url="https://api.test.com")
 
+    @patch("app.services.llm.record_service_usage")
     @patch("app.services.llm.get_llm_client")
-    def test_generate_question_success(self, mock_get_client):
+    def test_generate_question_success(self, mock_get_client, mock_record_usage):
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = "什么是函数？"
+        mock_response.usage = MagicMock(prompt_tokens=12, completion_tokens=6)
         mock_client.chat.completions.create.return_value = mock_response
         mock_get_client.return_value = mock_client
 
@@ -70,13 +72,16 @@ class TestLLMIntegration(unittest.TestCase):
             max_tokens=1024,
             temperature=1.7,
         )
+        mock_record_usage.assert_called_once()
 
+    @patch("app.services.llm.record_service_usage")
     @patch("app.services.llm.get_llm_client")
-    def test_generate_segment_summary_success(self, mock_get_client):
+    def test_generate_segment_summary_success(self, mock_get_client, mock_record_usage):
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = "这段内容介绍了函数的基本概念。"
+        mock_response.usage = MagicMock(prompt_tokens=15, completion_tokens=9)
         mock_client.chat.completions.create.return_value = mock_response
         mock_get_client.return_value = mock_client
 
@@ -97,6 +102,7 @@ class TestLLMIntegration(unittest.TestCase):
             max_tokens=1024,
             temperature=1.7,
         )
+        mock_record_usage.assert_called_once()
 
 
 if __name__ == "__main__":
