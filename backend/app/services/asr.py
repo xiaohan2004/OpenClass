@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 import base64
-import io
 import logging
 import time
-import wave
 from typing import Any, Optional
 
 import dashscope
-from mutagen import File as mutagen_file
 
 from app.config import get_settings
 from app.services.metrics import record_service_usage
+from app.utils.request_capture import capture_request
 from app.utils.time import now_ts
+from app.utils.usage import extract_usage, usage_value
 
 logger = logging.getLogger(__name__)
 
@@ -102,30 +101,6 @@ def _extract_text_from_response(response: Any) -> str:
     return "\n".join(parts).strip()
 
 
-def _get_audio_duration_seconds(audio_bytes: bytes) -> float:
-    """尽量从音频中解析时长（秒）。优先多格式解析，失败后降级到 WAV。"""
-    if mutagen_file is not None:
-        try:
-            audio_file = mutagen_file(io.BytesIO(audio_bytes))
-            info = getattr(audio_file, "info", None)
-            length = getattr(info, "length", None) if info is not None else None
-            if isinstance(length, (int, float)) and length > 0:
-                return float(length)
-        except Exception:
-            pass
-
-    try:
-        with wave.open(io.BytesIO(audio_bytes), "rb") as wav_file:
-            frame_rate = wav_file.getframerate()
-            frame_count = wav_file.getnframes()
-            if frame_rate <= 0:
-                return 0.0
-            return frame_count / frame_rate
-    except Exception:
-        logger.debug("音频时长解析失败，按 0 秒记录")
-        return 0.0
-
-
 class ASRService:
     """音频转文字服务"""
 
@@ -145,7 +120,6 @@ class ASRService:
         if not audio_bytes:
             raise ValueError("audio_bytes 不能为空")
 
-        audio_duration_seconds = _get_audio_duration_seconds(audio_bytes)
         request_start_time = now_ts()
         start_time = time.perf_counter()
         api_key = settings.qwen_api_key
@@ -160,7 +134,7 @@ class ASRService:
             asr_options["language"] = self.language
 
         try:
-            response = dashscope.MultiModalConversation.call(
+            response, request = capture_request(dashscope.MultiModalConversation.call)(
                 api_key=api_key,
                 model=self.model,
                 messages=[{"role": "user", "content": [{"audio": data_uri}]}],
@@ -168,16 +142,18 @@ class ASRService:
                 asr_options=asr_options,
             )
         except Exception as exc:
+            request = getattr(exc, "request_record", None)
             logger.exception("ASR 转录失败")
             record_service_usage(
                 service_type="asr",
                 request_model_name=self.model,
-                input_value=audio_duration_seconds,
+                input_value=0,
                 output_value=0,
                 start_time=request_start_time,
                 latency=int((time.perf_counter() - start_time) * 1000),
                 status="failed",
                 error=str(exc),
+                request_content=request,
             )
             raise RuntimeError(f"ASR 转录失败: {exc}") from exc
 
@@ -187,12 +163,13 @@ class ASRService:
             record_service_usage(
                 service_type="asr",
                 request_model_name=self.model,
-                input_value=audio_duration_seconds,
+                input_value=0,
                 output_value=0,
                 start_time=request_start_time,
                 latency=int((time.perf_counter() - start_time) * 1000),
                 status="failed",
                 error=message,
+                request_content=request,
                 response_content=response,
             )
             raise RuntimeError(f"ASR 请求失败: {message}")
@@ -203,15 +180,19 @@ class ASRService:
             record_service_usage(
                 service_type="asr",
                 request_model_name=self.model,
-                input_value=audio_duration_seconds,
+                input_value=0,
                 output_value=0,
                 start_time=request_start_time,
                 latency=int((time.perf_counter() - start_time) * 1000),
                 status="failed",
                 error=message,
+                request_content=request,
+                response_content=response,
             )
             raise RuntimeError(message)
 
+        usage = extract_usage(response)
+        audio_duration_seconds = usage_value(usage, "seconds")
         record_service_usage(
             service_type="asr",
             request_model_name=self.model,
@@ -220,7 +201,7 @@ class ASRService:
             start_time=request_start_time,
             latency=int((time.perf_counter() - start_time) * 1000),
             status="success",
-            request_content=f"audio_duration_seconds={audio_duration_seconds}",
+            request_content=request,
             response_content=response,
         )
 

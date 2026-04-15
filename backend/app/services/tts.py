@@ -11,7 +11,9 @@ import dashscope
 
 from app.config import get_settings
 from app.services.metrics import record_service_usage
+from app.utils.request_capture import capture_request
 from app.utils.time import now_ts
+from app.utils.usage import extract_usage, usage_value
 
 logger = logging.getLogger(__name__)
 
@@ -99,19 +101,22 @@ class TTSService:
             call_kwargs["optimize_instructions"] = self.optimize_instructions
 
         try:
-            response = dashscope.MultiModalConversation.call(**call_kwargs)
+            response, request = capture_request(dashscope.MultiModalConversation.call)(
+                **call_kwargs
+            )
         except Exception as exc:
+            request = getattr(exc, "request_record", None)
             logger.exception("TTS 合成失败")
             record_service_usage(
                 service_type="tts",
                 request_model_name=self.model,
-                input_value=len(normalized_text),
+                input_value=0,
                 output_value=0,
                 start_time=request_start_time,
                 latency=int((time.perf_counter() - start_time) * 1000),
                 status="failed",
                 error=str(exc),
-                request_content=normalized_text,
+                request_content=request,
             )
             raise RuntimeError(f"TTS 合成失败: {exc}") from exc
 
@@ -121,13 +126,13 @@ class TTSService:
             record_service_usage(
                 service_type="tts",
                 request_model_name=self.model,
-                input_value=len(normalized_text),
+                input_value=0,
                 output_value=0,
                 start_time=request_start_time,
                 latency=int((time.perf_counter() - start_time) * 1000),
                 status="failed",
                 error=message,
-                request_content=normalized_text,
+                request_content=request,
                 response_content=response,
             )
             raise RuntimeError(f"TTS 请求失败: {message}")
@@ -138,25 +143,27 @@ class TTSService:
             record_service_usage(
                 service_type="tts",
                 request_model_name=self.model,
-                input_value=len(normalized_text),
+                input_value=0,
                 output_value=0,
                 start_time=request_start_time,
                 latency=int((time.perf_counter() - start_time) * 1000),
                 status="failed",
                 error=message,
-                request_content=normalized_text,
+                request_content=request,
+                response_content=response,
             )
             raise RuntimeError(message)
 
+        usage = extract_usage(response)
         record_service_usage(
             service_type="tts",
             request_model_name=self.model,
-            input_value=len(normalized_text),
+            input_value=usage_value(usage, "characters"),
             output_value=0,
             start_time=request_start_time,
             latency=int((time.perf_counter() - start_time) * 1000),
             status="success",
-            request_content=normalized_text,
+            request_content=request,
             response_content=response,
         )
         return audio_url
