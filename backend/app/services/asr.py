@@ -43,6 +43,9 @@ def _guess_audio_mime_type(audio_bytes: bytes) -> str:
         return "audio/ogg"
     if audio_bytes.startswith(b"fLaC"):
         return "audio/flac"
+    # WebM/Matroska EBML header
+    if audio_bytes.startswith(b"\x1a\x45\xdf\xa3"):
+        return "audio/webm"
     if len(audio_bytes) > 12 and audio_bytes[4:8] == b"ftyp":
         return "audio/mp4"
     return "audio/wav"

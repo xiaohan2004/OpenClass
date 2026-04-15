@@ -393,7 +393,7 @@ WS /ws/session/{session_id}
     {
     "type": "audio_in",
     "data": {
-      "audio": <前端音频输入，格式为 bytes>,
+      "audio": <前端音频输入，base64>,
       "start_time":<开始时间戳>,
       "end_time":<结束时间戳>
       }
