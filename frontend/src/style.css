@@ -405,8 +405,18 @@ button {
   transform: translateX(3px);
 }
 
-.transcript-item.is-fresh {
-  background: linear-gradient(90deg, rgba(121, 167, 207, 0.12), transparent 72%);
+.transcript-item.is-fresh-1 {
+  background: linear-gradient(90deg, rgba(121, 167, 207, 0.14), transparent 72%);
+  border-radius: 16px;
+}
+
+.transcript-item.is-fresh-2 {
+  background: linear-gradient(90deg, rgba(121, 167, 207, 0.1), transparent 72%);
+  border-radius: 16px;
+}
+
+.transcript-item.is-fresh-3 {
+  background: linear-gradient(90deg, rgba(121, 167, 207, 0.06), transparent 72%);
   border-radius: 16px;
 }
 
@@ -761,6 +771,8 @@ button {
 
 .drawer-group {
   min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .drawer-header {
@@ -794,6 +806,7 @@ button {
 .log-list {
   overflow: auto;
   min-height: 0;
+  flex: 1;
   padding-right: 4px;
 }
 
@@ -829,7 +842,19 @@ button {
 }
 
 .queue-item p {
+  margin: 0;
   line-height: 1.55;
+}
+
+.queue-item__content {
+  display: grid;
+  gap: 4px;
+}
+
+.queue-item__time {
+  color: var(--text-faint);
+  font-size: 0.76rem;
+  letter-spacing: 0.04em;
 }
 
 .stat-row {

@@ -110,7 +110,11 @@
               class="transcript-item"
               :class="[
                 `kind-${item.kind}`,
-                { 'is-fresh': index >= transcriptItems.length - 2 }
+                {
+                  'is-fresh-1': freshLevel(index) === 1,
+                  'is-fresh-2': freshLevel(index) === 2,
+                  'is-fresh-3': freshLevel(index) === 3
+                }
               ]"
               :style="{ opacity: lineOpacity(index) }"
             >
@@ -171,14 +175,17 @@
               <span>{{ queuedQuestions.length }} 条</span>
             </div>
 
-            <div class="queue-list">
+            <div ref="queueFeed" class="queue-list">
               <article
                 v-for="question in queuedQuestions"
                 :key="question.id"
                 class="queue-item"
               >
                 <span>{{ question.order }}</span>
-                <p>{{ question.text }}</p>
+                <div class="queue-item__content">
+                  <p>{{ question.text }}</p>
+                  <small class="queue-item__time">{{ question.time || '--:--:--' }}</small>
+                </div>
               </article>
               <p v-if="queuedQuestions.length === 0" class="empty-text">暂无待提问问题</p>
             </div>
@@ -297,6 +304,7 @@ const {
   courseForm,
   sessionForm,
   transcriptFeed,
+  queueFeed,
   transcriptItems,
   summaries,
   queuedQuestions,
@@ -311,6 +319,7 @@ const {
   selectedMicrophoneId,
   micLevelPercent,
   lineOpacity,
+  freshLevel,
   openCourseModal,
   openSessionModal,
   createCourseAction,

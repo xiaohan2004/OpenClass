@@ -49,6 +49,7 @@ export function useClassroomPage() {
   })
 
   const transcriptFeed = ref(null)
+  const queueFeed = ref(null)
   let timerTick = null
   let wsCloseTimer = null
   let chunkStopTimer = null
@@ -133,7 +134,14 @@ export function useClassroomPage() {
     Boolean(selectedCourseId.value && selectedSessionId.value)
   )
 
-  const canEndSession = computed(() => Boolean(canStartSession.value && isRunning.value))
+  const canEndSession = computed(() => {
+    if (!canStartSession.value || !selectedSessionId.value) {
+      return false
+    }
+
+    const runtime = getSessionRuntime(selectedSessionId.value)
+    return runtime.status === 'recording' || runtime.status === 'paused'
+  })
 
   const timerLabel = computed(() => {
     const sessionId = selectedSessionId.value
@@ -190,15 +198,39 @@ export function useClassroomPage() {
 
   const micLevelPercent = computed(() => Math.max(0, Math.min(100, Math.round(micLevel.value * 100))))
 
+  function toUnixSeconds(ts) {
+    if (typeof ts === 'number' && Number.isFinite(ts)) {
+      return ts > 1e12 ? Math.floor(ts / 1000) : Math.floor(ts)
+    }
+    if (typeof ts === 'string' && ts.trim()) {
+      const numeric = Number(ts)
+      if (Number.isFinite(numeric)) {
+        return numeric > 1e12 ? Math.floor(numeric / 1000) : Math.floor(numeric)
+      }
+      const parsedMs = Date.parse(ts)
+      if (Number.isFinite(parsedMs)) {
+        return Math.floor(parsedMs / 1000)
+      }
+    }
+    return 0
+  }
+
   function formatTime(ts) {
-    if (!ts) {
+    const seconds = toUnixSeconds(ts)
+    if (!seconds) {
       return '--:--:--'
     }
-    const d = new Date(ts * 1000)
+    const d = new Date(seconds * 1000)
     const hh = String(d.getHours()).padStart(2, '0')
     const mm = String(d.getMinutes()).padStart(2, '0')
     const ss = String(d.getSeconds()).padStart(2, '0')
     return `${hh}:${mm}:${ss}`
+  }
+
+  function scrollQueueToBottom() {
+    if (queueFeed.value) {
+      queueFeed.value.scrollTop = queueFeed.value.scrollHeight
+    }
   }
 
   function createTransientId(prefix = 'temp') {
@@ -527,7 +559,8 @@ export function useClassroomPage() {
           .map((item) => ({
             id: item.id,
             order: '',
-            text: item.text
+            text: item.text,
+            time: formatTime(item.start_time || item.created_at || now)
           }))
 
         const merged = [...queuedQuestions.value, ...nextItems]
@@ -535,6 +568,10 @@ export function useClassroomPage() {
           ...item,
           order: `Q${index + 1}`
         }))
+
+        void nextTick().then(() => {
+          scrollQueueToBottom()
+        })
       }
     }
 
@@ -884,12 +921,22 @@ export function useClassroomPage() {
     }))
 
     const questionList = Array.isArray(questionsData) ? questionsData : []
-    queuedQuestions.value = questionList
+    const sortedQuestionList = [...questionList].sort((a, b) => {
+      const tsA = toUnixSeconds(a?.start_time || a?.created_at) || 0
+      const tsB = toUnixSeconds(b?.start_time || b?.created_at) || 0
+      if (tsA !== tsB) {
+        return tsA - tsB
+      }
+      return Number(a?.id || 0) - Number(b?.id || 0)
+    })
+
+    queuedQuestions.value = sortedQuestionList
       .filter((item) => item.status !== 'asked')
       .map((item, index) => ({
         id: item.id,
         order: `Q${index + 1}`,
-        text: item.text
+        text: item.text,
+        time: formatTime(item.start_time || item.created_at)
       }))
 
     const totalList = Array.isArray(statsData) ? statsData : []
@@ -945,6 +992,7 @@ export function useClassroomPage() {
     if (transcriptFeed.value) {
       transcriptFeed.value.scrollTop = transcriptFeed.value.scrollHeight
     }
+    scrollQueueToBottom()
   }
 
   function openCourseModal() {
@@ -1131,6 +1179,14 @@ export function useClassroomPage() {
     return Math.max(0.4, 1 - distance * 0.11)
   }
 
+  const freshLevel = (index) => {
+    const distance = transcriptItems.value.length - index - 1
+    if (distance < 0 || distance > 2) {
+      return 0
+    }
+    return distance + 1
+  }
+
   watch(selectedCourseId, async (newValue) => {
     if (!newValue) {
       await closeSessionWebSocket()
@@ -1151,6 +1207,14 @@ export function useClassroomPage() {
       lastChunkBytes.value = 0
       micLevel.value = 0
     }
+  })
+
+  watch(rightPanelOpen, async (isOpen) => {
+    if (!isOpen) {
+      return
+    }
+    await nextTick()
+    scrollQueueToBottom()
   })
 
   onMounted(async () => {
@@ -1192,6 +1256,7 @@ export function useClassroomPage() {
     courseForm,
     sessionForm,
     transcriptFeed,
+    queueFeed,
     transcriptItems,
     summaries,
     queuedQuestions,
@@ -1206,6 +1271,7 @@ export function useClassroomPage() {
     selectedMicrophoneId,
     micLevelPercent,
     lineOpacity,
+    freshLevel,
     openCourseModal,
     openSessionModal,
     createCourseAction,
