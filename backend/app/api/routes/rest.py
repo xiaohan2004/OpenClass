@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -79,25 +78,19 @@ class SessionCreatePayload(BaseModel):
     """创建课堂请求。"""
 
     course_id: int
-    seq: int | None = None
     title: str | None = None
-    config: dict[str, Any] | None = None
 
 
 class SessionUpdatePayload(BaseModel):
     """更新课堂请求。"""
 
-    seq: int | None = None
     title: str | None = None
-    config: dict[str, Any] | None = None
 
 
 class SessionPatchPayload(BaseModel):
     """部分更新课堂请求。"""
 
-    seq: int | None = None
     title: str | None = None
-    config: dict[str, Any] | None = None
 
 
 class SessionStartPayload(BaseModel):
@@ -144,7 +137,6 @@ class SessionRead(BaseModel):
     title: str | None = None
     start_time: int | None = None
     end_time: int | None = None
-    config: dict[str, Any] | None = None
     created_at: int
 
 
@@ -269,31 +261,9 @@ def _not_found(name: str) -> HTTPException:
     return HTTPException(status_code=404, detail=f"{name}不存在")
 
 
-def _serialize_session_config(raw_config: str | None) -> dict[str, Any] | None:
-    """将数据库中的课堂配置 JSON 字符串转换为对象。"""
-    if raw_config in (None, ""):
-        return None
-
-    try:
-        parsed = json.loads(raw_config)
-    except json.JSONDecodeError:
-        return {"raw": raw_config}
-
-    return parsed if isinstance(parsed, dict) else {"value": parsed}
-
-
-def _dump_session_config(config: dict[str, Any] | None) -> str | None:
-    """将课堂配置对象写回数据库字符串。"""
-    if config is None:
-        return None
-    return json.dumps(config, ensure_ascii=False, sort_keys=True)
-
-
 def _serialize_model(model: Any, schema: type[BaseModel]) -> dict[str, Any]:
     """序列化单个模型。"""
     raw_data = jsonable_encoder(model)
-    if "config" in raw_data:
-        raw_data["config"] = _serialize_session_config(raw_data.get("config"))
     data = schema.model_validate(raw_data).model_dump()
     return jsonable_encoder(data)
 
@@ -380,9 +350,7 @@ def create_session_endpoint(
     session_record = create_session(
         db,
         course_id=payload.course_id,
-        seq=payload.seq,
         title=payload.title,
-        config=_dump_session_config(payload.config),
     )
     return _success(_serialize_model(session_record, SessionRead), "创建成功")
 
@@ -418,9 +386,7 @@ def update_session_endpoint(
     session_record = update_session(
         db,
         session_id,
-        seq=payload.seq,
         title=payload.title,
-        config=_dump_session_config(payload.config),
     )
     return _success(_serialize_model(session_record, SessionRead), "更新成功")
 
@@ -431,8 +397,6 @@ def patch_session_endpoint(
 ):
     _require_session(db, session_id)
     updates = payload.model_dump(exclude_unset=True, exclude_none=True)
-    if "config" in updates:
-        updates["config"] = _dump_session_config(updates["config"])
     session_record = update_session(db, session_id, **updates)
     return _success(_serialize_model(session_record, SessionRead), "更新成功")
 

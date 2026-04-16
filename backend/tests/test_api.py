@@ -86,9 +86,7 @@ class TestAPI(unittest.TestCase):
             session = create_session(
                 db,
                 course_id=course.id,
-                seq=1,
                 title="第一节：极限",
-                config='{"ask_interval_sec": 120, "summary_window_sec": 180}',
             )
             transcript = create_transcript(
                 db,
@@ -120,9 +118,7 @@ class TestAPI(unittest.TestCase):
             stats_total = create_stats_total(
                 db, service_type="llm", input_value=100, output_value=50
             )
-            upsert_stats_daily(
-                db, "2026-04-13", "llm", input_value=60, output_value=30
-            )
+            upsert_stats_daily(db, "2026-04-13", "llm", input_value=60, output_value=30)
             create_stats_hourly(
                 db, "2026-04-13", 8, "llm", input_value=10, output_value=5
             )
@@ -229,9 +225,7 @@ class TestAPI(unittest.TestCase):
             patch_response.json()["data"]["description"], "本学期重点：力学"
         )
 
-        delete_response = self.request(
-            "DELETE", f"/api/courses/{created_course['id']}"
-        )
+        delete_response = self.request("DELETE", f"/api/courses/{created_course['id']}")
         self.assertEqual(delete_response.status_code, 200)
         self.assertEqual(delete_response.json()["data"], {})
 
@@ -243,17 +237,13 @@ class TestAPI(unittest.TestCase):
             json={
                 "course_id": self.seed_data["course_id"],
                 "title": "第二节：连续",
-                "seq": 2,
-                "config": {
-                    "ask_interval_sec": 90,
-                    "summary_window_sec": 180,
-                },
             },
         )
         self.assertEqual(create_response.status_code, 200)
         created_session = create_response.json()["data"]
         self.assertIsNone(created_session["start_time"])
-        self.assertEqual(created_session["config"]["ask_interval_sec"], 90)
+        self.assertEqual(created_session["seq"], 2)
+        self.assertNotIn("config", created_session)
 
         list_response = self.request("GET", "/api/sessions")
         self.assertEqual(list_response.status_code, 200)
@@ -270,11 +260,6 @@ class TestAPI(unittest.TestCase):
             f"/api/sessions/{created_session['id']}",
             json={
                 "title": "第二节：函数连续性",
-                "seq": 2,
-                "config": {
-                    "ask_interval_sec": 120,
-                    "summary_window_sec": 240,
-                },
             },
         )
         self.assertEqual(put_response.status_code, 200)
@@ -299,9 +284,7 @@ class TestAPI(unittest.TestCase):
         get_started_response = self.request(
             "GET", f"/api/sessions/{created_session['id']}"
         )
-        self.assertEqual(
-            get_started_response.json()["data"]["start_time"], 1712995200
-        )
+        self.assertEqual(get_started_response.json()["data"]["start_time"], 1712995200)
 
         pause_response = self.request(
             "POST", f"/api/sessions/{created_session['id']}/pause"
@@ -405,9 +388,7 @@ class TestAPI(unittest.TestCase):
             stats_totals_response.json()["data"][0]["id"],
             self.seed_data["stats_total_id"],
         )
-        self.assertEqual(
-            stats_totals_response.json()["data"][0]["service_type"], "llm"
-        )
+        self.assertEqual(stats_totals_response.json()["data"][0]["service_type"], "llm")
 
         stats_dailies_response = self.request("GET", "/api/stats/dailies")
         self.assertEqual(stats_dailies_response.status_code, 200)
@@ -418,7 +399,9 @@ class TestAPI(unittest.TestCase):
 
         stats_hourlies_response = self.request("GET", "/api/stats/hourlies")
         self.assertEqual(stats_hourlies_response.status_code, 200)
-        self.assertEqual(stats_hourlies_response.json()["data"][0]["date"], "2026-04-13")
+        self.assertEqual(
+            stats_hourlies_response.json()["data"][0]["date"], "2026-04-13"
+        )
         self.assertEqual(
             stats_hourlies_response.json()["data"][0]["service_type"], "llm"
         )

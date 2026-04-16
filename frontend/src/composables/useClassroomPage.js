@@ -43,9 +43,7 @@ export function useClassroomPage() {
   })
 
   const sessionForm = ref({
-    title: '',
-    seq: null,
-    configText: ''
+    title: ''
   })
 
   const transcriptFeed = ref(null)
@@ -1046,30 +1044,16 @@ export function useClassroomPage() {
         return
       }
 
-      let parsedConfig = null
-      if (sessionForm.value.configText) {
-        try {
-          parsedConfig = JSON.parse(sessionForm.value.configText)
-        } catch {
-          window.alert('配置 JSON 格式不正确')
-          return
-        }
-      }
-
       const payload = {
         course_id: selectedCourseId.value,
-        title: sessionForm.value.title,
-        seq: sessionForm.value.seq || null,
-        config: parsedConfig
+        title: sessionForm.value.title
       }
 
       const created = await createSession(payload)
 
       showCreateSessionModal.value = false
       sessionForm.value = {
-        title: '',
-        seq: null,
-        configText: ''
+        title: ''
       }
 
       await loadSessions(selectedCourseId.value)

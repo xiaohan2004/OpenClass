@@ -48,7 +48,7 @@
                 >
                   <option :value="null">请选择课堂</option>
                   <option v-for="session in sessions" :key="session.id" :value="session.id">
-                    {{ session.title || `第 ${session.seq || '-'} 讲` }}
+                    {{ `第${session.seq || '-'}讲 · ${session.title || '未命名课堂'}` }}
                   </option>
                 </select>
               </label>
@@ -269,19 +269,7 @@
           <h3>新建课堂</h3>
           <label>
             课堂标题
-            <input v-model.trim="sessionForm.title" type="text" placeholder="例如：第 6 讲 · 一致性" />
-          </label>
-          <label>
-            课程序号
-            <input v-model.number="sessionForm.seq" type="number" min="1" placeholder="例如：6" />
-          </label>
-          <label>
-            配置（JSON，可选）
-            <textarea
-              v-model.trim="sessionForm.configText"
-              rows="4"
-              placeholder='例如：{"autoAsk": true, "interval": 20}'
-            ></textarea>
+            <input v-model.trim="sessionForm.title" type="text" placeholder="例如：Web and HTTP" />
           </label>
           <div class="modal-actions">
             <button class="ghost-button" type="button" @click="showCreateSessionModal = false">取消</button>

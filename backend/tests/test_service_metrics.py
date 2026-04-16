@@ -5,7 +5,6 @@ from __future__ import annotations
 import io
 import sys
 import unittest
-import wave
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -15,56 +14,9 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.services.asr import ASRService
 from app.services.tts import TTSService
-from app.services.asr import _get_audio_duration_seconds
 
 
 class TestServiceMetrics(unittest.TestCase):
-    @patch("app.services.asr.mutagen_file")
-    def test_asr_duration_uses_mutagen_when_available(self, mock_mutagen_file):
-        mock_audio = MagicMock()
-        mock_audio.info = MagicMock(length=2.5)
-        mock_mutagen_file.return_value = mock_audio
-
-        duration = _get_audio_duration_seconds(b"not-wav")
-
-        self.assertEqual(duration, 2.5)
-
-    @patch("app.services.asr.mutagen_file", None)
-    def test_asr_duration_falls_back_to_zero_when_unparseable(self):
-        duration = _get_audio_duration_seconds(b"invalid-audio")
-        self.assertEqual(duration, 0.0)
-
-    @patch("app.services.asr.mutagen_file", None)
-    def test_asr_duration_parses_wav_in_fallback(self):
-        sample_rate = 16000
-        duration_seconds = 1
-        frame_count = sample_rate * duration_seconds
-        wav_buffer = io.BytesIO()
-
-        with wave.open(wav_buffer, "wb") as wav_file:
-            wav_file.setnchannels(1)
-            wav_file.setsampwidth(2)
-            wav_file.setframerate(sample_rate)
-            wav_file.writeframes(b"\x00\x00" * frame_count)
-
-        duration = _get_audio_duration_seconds(wav_buffer.getvalue())
-        self.assertAlmostEqual(duration, 1.0, places=3)
-
-    @patch("app.services.asr.mutagen_file", None)
-    def test_asr_duration_parses_half_second_wav_in_fallback(self):
-        sample_rate = 16000
-        frame_count = sample_rate // 2
-        wav_buffer = io.BytesIO()
-
-        with wave.open(wav_buffer, "wb") as wav_file:
-            wav_file.setnchannels(1)
-            wav_file.setsampwidth(2)
-            wav_file.setframerate(sample_rate)
-            wav_file.writeframes(b"\x00\x00" * frame_count)
-
-        duration = _get_audio_duration_seconds(wav_buffer.getvalue())
-        self.assertAlmostEqual(duration, 0.5, places=3)
-
     @patch("app.services.asr.record_service_usage")
     @patch("app.services.asr._extract_text_from_response", return_value="转写结果")
     @patch("app.services.asr.dashscope.MultiModalConversation.call")

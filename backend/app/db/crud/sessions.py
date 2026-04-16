@@ -2,6 +2,7 @@
 
 from typing import Optional
 
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.db.models import SessionRecord
@@ -11,18 +12,21 @@ from app.utils.time import now_ts
 def create_session(
     db: Session,
     course_id: int,
-    seq: Optional[int] = None,
     title: Optional[str] = None,
     start_time: Optional[int] = None,
-    config: Optional[str] = None,
 ) -> SessionRecord:
     """创建课堂会话。"""
+    max_seq_statement = select(func.max(SessionRecord.seq)).where(
+        SessionRecord.course_id == course_id
+    )
+    max_seq = db.exec(max_seq_statement).one()
+    next_seq = (max_seq or 0) + 1
+
     session_record = SessionRecord(
         course_id=course_id,
-        seq=seq,
+        seq=next_seq,
         title=title,
         start_time=start_time,
-        config=config,
     )
     db.add(session_record)
     db.commit()
