@@ -96,6 +96,17 @@ export function fetchRelayLogById(relayLogId) {
   return apiRequest(`/api/relay-logs/${relayLogId}`)
 }
 
+export function fetchSettings() {
+  return apiRequest('/api/settings')
+}
+
+export function patchSettings(payload) {
+  return apiRequest('/api/settings', {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  })
+}
+
 export function createCourse(payload) {
   return apiRequest('/api/courses', {
     method: 'POST',

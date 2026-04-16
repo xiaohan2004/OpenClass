@@ -104,16 +104,6 @@
         >
           {{ loadingMore ? "加载中..." : "加载更多" }}
         </button>
-        <div class="more-log-scroll-top-wrap">
-          <button
-            class="more-log-scroll-top"
-            type="button"
-            title="回顶"
-            @click="scrollToTop"
-          >
-            ↑
-          </button>
-        </div>
       </div>
     </div>
 
@@ -229,10 +219,6 @@ const {
   loadMoreLogs,
   changeServiceType,
 } = useLogsPage();
-
-const scrollToTop = () => {
-  document.querySelector(".logs-root")?.scrollIntoView({ behavior: "smooth" });
-};
 </script>
 
 <style scoped>

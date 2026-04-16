@@ -219,12 +219,12 @@
       <button class="ghost-button more-toggle" type="button" @click="moreOverlayOpen = !moreOverlayOpen">
         {{ moreOverlayOpen ? '主页' : '更多' }}
       </button>
-      <button class="ghost-button debug-toggle" type="button" @click="debugPanelOpen = !debugPanelOpen">
+      <button v-if="showDebugToggle" class="ghost-button debug-toggle" type="button" @click="debugPanelOpen = !debugPanelOpen">
         {{ debugPanelOpen ? '收起' : '调试' }}
       </button>
 
       <transition name="drawer">
-        <div v-if="debugPanelOpen" class="debug-panel glass-panel">
+        <div v-if="showDebugToggle && debugPanelOpen" class="debug-panel glass-panel">
           <p class="debug-title">调试工具</p>
           <p class="debug-meta">调试功能已清空。</p>
         </div>
@@ -282,11 +282,43 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import MoreLayout from './components/MoreLayout.vue'
 import { useClassroomPage } from './composables/useClassroomPage'
 
 const moreOverlayOpen = ref(false)
+const showDebugToggle = ref(true)
+const DEBUG_TOGGLE_STORAGE_KEY = 'openclass.ui.showDebugToggle'
+
+const syncDebugToggleFromStorage = () => {
+  let visible = true
+  try {
+    const raw = window.localStorage.getItem(DEBUG_TOGGLE_STORAGE_KEY)
+    if (raw != null) {
+      visible = String(raw).toLowerCase() !== 'false'
+    }
+  } catch {
+    visible = true
+  }
+
+  showDebugToggle.value = visible
+}
+
+const handleStorageEvent = (event) => {
+  if (event?.key !== DEBUG_TOGGLE_STORAGE_KEY) {
+    return
+  }
+  syncDebugToggleFromStorage()
+}
+
+const handleDebugToggleUpdated = (event) => {
+  const visible = event?.detail?.visible
+  if (typeof visible === 'boolean') {
+    showDebugToggle.value = visible
+    return
+  }
+  syncDebugToggleFromStorage()
+}
 
 const {
   sessionStatus,
@@ -329,4 +361,15 @@ const {
   toggleStartPause,
   endCurrentSession
 } = useClassroomPage()
+
+onMounted(() => {
+  syncDebugToggleFromStorage()
+  window.addEventListener('storage', handleStorageEvent)
+  window.addEventListener('openclass:debug-toggle-updated', handleDebugToggleUpdated)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('storage', handleStorageEvent)
+  window.removeEventListener('openclass:debug-toggle-updated', handleDebugToggleUpdated)
+})
 </script>

@@ -10,10 +10,14 @@ from pydantic import BaseModel, ConfigDict
 from sqlmodel import Session
 
 from app.api.deps import get_db_session
+from app.config import refresh_settings_cache
+from app.config_defaults import DEFAULT_SETTINGS_VALUES, SENSITIVE_SETTING_KEYS
+from app.db.config_store import dump_settings_dict, load_settings_dict
 from app.db.crud import (
     close_session,
     create_course,
     create_session,
+    list_settings,
     get_course_by_id,
     get_question_by_id,
     get_relay_log_by_id,
@@ -33,6 +37,7 @@ from app.db.crud import (
     list_stats_totals,
     list_transcripts,
     list_transcripts_by_session,
+    upsert_settings,
     update_course,
     update_question,
     update_session,
@@ -251,6 +256,34 @@ class StatsHourlyRead(BaseModel):
     request_failed: int | None = None
 
 
+class SettingRead(BaseModel):
+    """设置输出结构。"""
+
+    key: str
+    value: Any | None = None
+    sensitive: bool = False
+    has_value: bool = False
+
+
+class SettingsRead(BaseModel):
+    """设置列表输出结构。"""
+
+    items: list[SettingRead]
+
+
+class SettingUpdateItem(BaseModel):
+    """设置更新项。"""
+
+    key: str
+    value: Any | None = None
+
+
+class SettingsUpdatePayload(BaseModel):
+    """设置更新请求。"""
+
+    items: list[SettingUpdateItem]
+
+
 def _success(data: Any, msg: str = "ok") -> dict[str, Any]:
     """构造统一成功响应。"""
     return ApiResponse(msg=msg, data=data).model_dump()
@@ -273,6 +306,30 @@ def _serialize_models(
 ) -> list[dict[str, Any]]:
     """序列化模型列表。"""
     return [_serialize_model(model, schema) for model in models]
+
+
+def _serialize_settings(db: Session) -> dict[str, Any]:
+    """序列化设置项，敏感键不回传明文。"""
+    settings_dict = load_settings_dict(db)
+    raw_settings_map = {setting.key: setting.value for setting in list_settings(db)}
+
+    items: list[dict[str, Any]] = []
+    for key in DEFAULT_SETTINGS_VALUES.keys():
+        is_sensitive = key in SENSITIVE_SETTING_KEYS
+        raw_value = raw_settings_map.get(key)
+        has_value = isinstance(raw_value, str) and bool(raw_value.strip())
+
+        value = None if is_sensitive else settings_dict.get(key)
+        items.append(
+            SettingRead(
+                key=key,
+                value=value,
+                sensitive=is_sensitive,
+                has_value=has_value,
+            ).model_dump()
+        )
+
+    return SettingsRead(items=items).model_dump()
 
 
 def _require_course(db: Session, course_id: int):
@@ -580,3 +637,28 @@ def list_stats_dailies_endpoint(db: Session = Depends(get_db_session)):
 @router.get("/stats/hourlies")
 def list_stats_hourlies_endpoint(db: Session = Depends(get_db_session)):
     return _success(_serialize_models(list_stats_hourlies(db), StatsHourlyRead))
+
+
+@router.get("/settings")
+def list_settings_endpoint(db: Session = Depends(get_db_session)):
+    return _success(_serialize_settings(db))
+
+
+@router.patch("/settings")
+def patch_settings_endpoint(
+    payload: SettingsUpdatePayload,
+    db: Session = Depends(get_db_session),
+):
+    if not payload.items:
+        raise HTTPException(status_code=400, detail="更新项不能为空")
+
+    updates: dict[str, Any] = {}
+    valid_keys = set(DEFAULT_SETTINGS_VALUES.keys())
+    for item in payload.items:
+        if item.key not in valid_keys:
+            raise HTTPException(status_code=400, detail=f"不支持的配置项: {item.key}")
+        updates[item.key] = item.value
+
+    upsert_settings(db, dump_settings_dict(updates))
+    refresh_settings_cache()
+    return _success(_serialize_settings(db), "更新成功")

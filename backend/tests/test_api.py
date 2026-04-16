@@ -406,6 +406,56 @@ class TestAPI(unittest.TestCase):
             stats_hourlies_response.json()["data"][0]["service_type"], "llm"
         )
 
+    def test_settings_endpoints(self):
+        """设置接口应支持读取与更新。"""
+        get_response = self.request("GET", "/api/settings")
+        self.assertEqual(get_response.status_code, 200)
+
+        items = get_response.json()["data"]["items"]
+        self.assertGreater(len(items), 0)
+
+        base_url_item = next(
+            item for item in items if item["key"] == "deepseek_base_url"
+        )
+        self.assertEqual(base_url_item["value"], "https://api.deepseek.com")
+        self.assertEqual(base_url_item["sensitive"], False)
+
+        sensitive_item = next(
+            item for item in items if item["key"] == "deepseek_api_key"
+        )
+        self.assertEqual(sensitive_item["value"], None)
+        self.assertEqual(sensitive_item["sensitive"], True)
+
+        patch_response = self.request(
+            "PATCH",
+            "/api/settings",
+            json={
+                "items": [
+                    {"key": "deepseek_base_url", "value": "https://custom.example.com"},
+                    {"key": "max_tokens", "value": 2048},
+                    {"key": "deepseek_api_key", "value": "secret-token"},
+                ]
+            },
+        )
+        self.assertEqual(patch_response.status_code, 200)
+
+        patched_items = patch_response.json()["data"]["items"]
+        patched_base_url = next(
+            item for item in patched_items if item["key"] == "deepseek_base_url"
+        )
+        self.assertEqual(patched_base_url["value"], "https://custom.example.com")
+
+        patched_tokens = next(
+            item for item in patched_items if item["key"] == "max_tokens"
+        )
+        self.assertEqual(patched_tokens["value"], 2048)
+
+        patched_sensitive = next(
+            item for item in patched_items if item["key"] == "deepseek_api_key"
+        )
+        self.assertEqual(patched_sensitive["value"], None)
+        self.assertEqual(patched_sensitive["has_value"], True)
+
     def test_not_found_resources_return_404(self):
         """不存在的资源应返回 404。"""
         self.assertEqual(self.request("GET", "/api/courses/99999").status_code, 404)

@@ -1,5 +1,5 @@
 <template>
-  <section class="more-overlay">
+  <section ref="overlayRef" class="more-overlay">
     <div class="more-overlay__bg"></div>
     <div class="more-overlay__panel">
       <aside class="more-nav glass-panel">
@@ -18,23 +18,35 @@
         </button>
       </aside>
 
-      <div class="more-content">
-        <header class="more-header">
-          <p class="more-overlay__eyebrow">课堂模拟学生提问助手</p>
-          <h2>{{ moreViewTitleMap[activeView] }}</h2>
-        </header>
+      <div class="more-panel-body">
+        <div class="more-content">
+          <header class="more-header">
+            <p class="more-overlay__eyebrow">课堂模拟学生提问助手</p>
+            <h2>{{ moreViewTitleMap[activeView] }}</h2>
+          </header>
 
-        <StatsPage
-          v-if="activeView === 'stats'"
-        />
+          <StatsPage
+            v-if="activeView === 'stats'"
+          />
 
-        <LogsPage
-          v-else-if="activeView === 'logs'"
-        />
+          <LogsPage
+            v-else-if="activeView === 'logs'"
+          />
 
-        <SettingsPage
-          v-else
-        />
+          <SettingsPage
+            v-else
+          />
+        </div>
+
+        <button
+          class="more-scroll-top"
+          type="button"
+          title="回顶"
+          aria-label="回到顶部"
+          @click="scrollToTop"
+        >
+          ↑
+        </button>
       </div>
     </div>
   </section>
@@ -53,6 +65,11 @@ const {
 } = useMoreLayout()
 
 const activeView = ref('stats')
+const overlayRef = ref(null)
+
+const scrollToTop = () => {
+  overlayRef.value?.scrollTo({ top: 0, behavior: 'smooth' })
+}
 </script>
 
 <style scoped>
@@ -62,7 +79,7 @@ const activeView = ref('stats')
   z-index: 26;
   display: block;
   padding: 20px;
-  overflow-y: scroll;
+  overflow-y: auto;
   overflow-x: hidden;
   scrollbar-gutter: stable;
 }
@@ -89,11 +106,58 @@ const activeView = ref('stats')
   gap: 20px;
 }
 
+.more-panel-body {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+}
+
 .more-overlay__eyebrow {
   margin: 0;
   font-size: 1.05rem;
   color: rgba(190, 227, 202, 0.78);
   letter-spacing: 0.06em;
+}
+
+.more-scroll-top {
+  position: fixed;
+  right: max(18px, calc((100vw - min(1080px, calc(100vw - 40px))) / 2 - 60px));
+  bottom: 26px;
+  z-index: 2;
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  border: 1px solid rgba(164, 226, 184, 0.24);
+  display: grid;
+  place-items: center;
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: #063821;
+  background: linear-gradient(180deg, rgba(144, 230, 168, 0.96), rgba(96, 199, 119, 0.92));
+  box-shadow:
+    0 12px 24px rgba(19, 63, 42, 0.38),
+    inset 0 1px 0 rgba(242, 255, 246, 0.42);
+  transition: transform 180ms ease, box-shadow 180ms ease,
+    filter 180ms ease;
+}
+
+.more-scroll-top:hover {
+  transform: translateY(-2px) scale(1.04);
+  filter: brightness(1.03);
+  box-shadow:
+    0 16px 28px rgba(19, 63, 42, 0.44),
+    0 0 0 3px rgba(138, 225, 165, 0.2),
+    inset 0 1px 0 rgba(242, 255, 246, 0.42);
+}
+
+.more-scroll-top:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 3px rgba(138, 225, 165, 0.34),
+    0 16px 28px rgba(19, 63, 42, 0.44),
+    inset 0 1px 0 rgba(242, 255, 246, 0.42);
 }
 
 .more-header h2 {
@@ -231,6 +295,13 @@ const activeView = ref('stats')
 @media (max-width: 860px) {
   .more-overlay {
     padding: 14px;
+  }
+
+  .more-scroll-top {
+    right: 18px;
+    bottom: 18px;
+    width: 48px;
+    height: 48px;
   }
 
   .more-overlay__panel {
