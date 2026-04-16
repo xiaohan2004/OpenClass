@@ -1,7 +1,7 @@
 const moreNavItems = [
-  { id: 'stats', symbol: 'S', label: '统计' },
-  { id: 'logs', symbol: 'L', label: '日志' },
-  { id: 'settings', symbol: 'G', label: '设置' }
+  { id: 'stats', symbol: '📊', label: '统计' },
+  { id: 'logs', symbol: '🧾', label: '日志' },
+  { id: 'settings', symbol: '⚙️', label: '设置' }
 ]
 
 const moreViewTitleMap = {

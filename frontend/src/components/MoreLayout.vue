@@ -13,8 +13,8 @@
           :aria-label="item.label"
           @click="activeView = item.id"
         >
-          <span>{{ item.symbol }}</span>
-          <small>{{ item.label }}</small>
+          <span class="more-nav__icon">{{ item.symbol }}</span>
+          <small class="more-nav__label">{{ item.label }}</small>
         </button>
       </aside>
 
@@ -85,13 +85,13 @@ const activeView = ref('stats')
   min-height: calc(100vh - 40px);
   margin: 0 auto;
   display: grid;
-  grid-template-columns: 60px minmax(0, 1fr);
+  grid-template-columns: 78px minmax(0, 1fr);
   gap: 20px;
 }
 
 .more-overlay__eyebrow {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: 1.05rem;
   color: rgba(190, 227, 202, 0.78);
   letter-spacing: 0.06em;
 }
@@ -108,43 +108,111 @@ const activeView = ref('stats')
   top: 18vh;
   align-self: start;
   height: fit-content;
-  border-radius: 24px;
-  padding: 12px 8px;
+  border-radius: 22px;
+  padding: 12px 10px;
   display: grid;
-  gap: 10px;
-  background: linear-gradient(180deg, rgba(20, 53, 44, 0.8), rgba(10, 39, 33, 0.8));
-  border: 1px solid rgba(130, 178, 145, 0.2);
+  gap: 8px;
+  background:
+    linear-gradient(180deg, rgba(27, 67, 55, 0.9), rgba(11, 41, 34, 0.9));
+  border: 1px solid rgba(132, 190, 156, 0.26);
+  box-shadow:
+    inset 0 1px 0 rgba(236, 253, 245, 0.12),
+    0 12px 28px rgba(4, 20, 14, 0.34);
 }
 
 .more-nav__item {
-  width: 42px;
-  min-height: 54px;
-  border-radius: 14px;
+  position: relative;
+  width: 56px;
+  min-height: 68px;
+  border-radius: 16px;
+  border: 1px solid rgba(157, 214, 182, 0.12);
   display: inline-flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  color: rgba(185, 218, 198, 0.7);
-  background: rgba(196, 230, 209, 0.04);
-  transition: all 180ms ease;
+  gap: 7px;
+  color: rgba(196, 228, 209, 0.82);
+  background:
+    linear-gradient(180deg, rgba(209, 241, 222, 0.08), rgba(164, 212, 185, 0.03));
+  overflow: hidden;
+  transition: transform 180ms ease, box-shadow 180ms ease,
+    border-color 180ms ease, background 180ms ease, color 180ms ease;
 }
 
-.more-nav__item span {
-  font-size: 0.9rem;
+.more-nav__item::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(187, 246, 205, 0.26), transparent 55%);
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.more-nav__item::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  width: 3px;
+  height: 0;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #8df0a5, #72d491);
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: height 180ms ease, opacity 180ms ease;
+}
+
+.more-nav__icon {
+  font-size: 1.02rem;
   font-weight: 700;
-}
-
-.more-nav__item small {
-  font-size: 0.65rem;
   line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(7, 27, 20, 0.2));
 }
 
-.more-nav__item.is-active,
+.more-nav__label {
+  font-size: 0.72rem;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  font-weight: 800;
+  color: rgba(224, 245, 233, 0.95);
+}
+
 .more-nav__item:hover {
+  transform: translateY(-2px) scale(1.05);
+  border-color: rgba(156, 231, 183, 0.68);
+  background:
+    linear-gradient(180deg, rgba(215, 248, 228, 0.2), rgba(170, 220, 191, 0.08));
+  box-shadow:
+    0 0 0 1px rgba(169, 238, 193, 0.28),
+    0 14px 26px rgba(13, 46, 33, 0.44),
+    0 0 24px rgba(127, 224, 158, 0.22);
+}
+
+.more-nav__item:hover::after {
+  opacity: 1;
+}
+
+.more-nav__item.is-active {
   background: linear-gradient(180deg, rgba(113, 213, 134, 0.9), rgba(95, 198, 118, 0.9));
   color: #063821;
-  box-shadow: 0 10px 20px rgba(79, 186, 108, 0.28);
+  border-color: rgba(145, 226, 174, 0.75);
+  box-shadow:
+    inset 0 1px 0 rgba(241, 255, 247, 0.42),
+    0 12px 22px rgba(79, 186, 108, 0.32);
+}
+
+.more-nav__item.is-active::before {
+  opacity: 1;
+  height: 24px;
+}
+
+.more-nav__item:focus-visible {
+  outline: none;
+  border-color: rgba(169, 238, 193, 0.9);
+  box-shadow:
+    0 0 0 3px rgba(131, 226, 161, 0.28),
+    0 8px 18px rgba(16, 56, 38, 0.34);
 }
 
 .more-content {
@@ -177,6 +245,24 @@ const activeView = ref('stats')
     grid-auto-flow: column;
     grid-template-columns: repeat(3, 60px);
     width: fit-content;
+  }
+
+  .more-nav__item::before {
+    left: 50%;
+    top: auto;
+    bottom: -7px;
+    width: 20px;
+    height: 3px;
+    transform: translateX(-50%);
+  }
+
+  .more-nav__item.is-active::before {
+    width: 24px;
+    height: 3px;
+  }
+
+  .more-nav__item {
+    min-height: 62px;
   }
 }
 
