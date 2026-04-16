@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import logging
 import time
+from functools import lru_cache
 from typing import Any, Optional
 
 import dashscope
@@ -17,19 +18,53 @@ from app.utils.usage import extract_usage, usage_value
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_ASR_MODEL = "qwen3-asr-flash"
-DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/api/v1"
-settings = get_settings()
 
-_asr_service: Optional["ASRService"] = None
+class _SettingsProxy:
+    def __init__(self) -> None:
+        self._overrides: dict[str, object] = {}
+
+    def __getattr__(self, item: str) -> object:
+        if item in self._overrides:
+            return self._overrides[item]
+        return getattr(get_settings(), item)
+
+    def __setattr__(self, key: str, value: object) -> None:
+        if key == "_overrides":
+            object.__setattr__(self, key, value)
+            return
+        self._overrides[key] = value
+
+    def __delattr__(self, item: str) -> None:
+        self._overrides.pop(item, None)
+
+
+settings = _SettingsProxy()
+
+
+@lru_cache(maxsize=8)
+def _build_asr_service(
+    model: str,
+    base_url: str,
+    enable_itn: bool,
+    language: str,
+) -> "ASRService":
+    return ASRService(
+        model=model,
+        enable_itn=enable_itn,
+        language=language,
+        base_url=base_url,
+    )
 
 
 def get_asr_service() -> "ASRService":
     """获取 ASR 服务单例"""
-    global _asr_service
-    if _asr_service is None:
-        _asr_service = ASRService()
-    return _asr_service
+    runtime_settings = get_settings()
+    return _build_asr_service(
+        runtime_settings.asr_model,
+        runtime_settings.asr_base_url,
+        runtime_settings.asr_enable_itn,
+        runtime_settings.asr_language,
+    )
 
 
 def _guess_audio_mime_type(audio_bytes: bytes) -> str:
@@ -110,10 +145,13 @@ class ASRService:
         model: Optional[str] = None,
         enable_itn: bool = False,
         language: Optional[str] = "zh",
+        base_url: Optional[str] = None,
     ) -> None:
-        self.model = model or DEFAULT_ASR_MODEL
+        runtime_settings = get_settings()
+        self.model = model or runtime_settings.asr_model
         self.enable_itn = enable_itn
         self.language = language
+        self.base_url = base_url or runtime_settings.asr_base_url
 
     def transcribe(self, audio_bytes: bytes) -> str:
         """传入音频字节，返回转录文本"""
@@ -126,7 +164,7 @@ class ASRService:
         if not api_key:
             raise ValueError("Qwen_API_Key 未配置，无法调用 ASR 服务")
 
-        dashscope.base_http_api_url = DEFAULT_BASE_URL
+        dashscope.base_http_api_url = self.base_url
         data_uri = _build_data_uri(audio_bytes)
 
         asr_options: dict[str, Any] = {"enable_itn": self.enable_itn}

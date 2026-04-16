@@ -28,7 +28,34 @@ class QuestionProcessor:
         settings = get_settings()
         self.max_questions = settings.max_questions
         self._question_queue = QuestionTimestampQueue(max_size=settings.max_questions)
+        self._config_refresh_interval_seconds = getattr(
+            settings, "settings_refresh_interval_seconds", 3.0
+        )
+        self._config_loaded_at = time.monotonic()
         logger.info("QuestionProcessor 初始化完成")
+
+    def _sync_config(self) -> None:
+        """同步热更新配置。"""
+        elapsed = time.monotonic() - self._config_loaded_at
+        if elapsed < self._config_refresh_interval_seconds:
+            return
+
+        settings = get_settings()
+        max_questions = getattr(settings, "max_questions", self.max_questions)
+        if (
+            isinstance(max_questions, int)
+            and max_questions > 0
+            and max_questions != self.max_questions
+        ):
+            self.max_questions = max_questions
+            self._question_queue.set_max_size(max_questions)
+
+        self._config_refresh_interval_seconds = getattr(
+            settings,
+            "settings_refresh_interval_seconds",
+            self._config_refresh_interval_seconds,
+        )
+        self._config_loaded_at = time.monotonic()
 
     def generate_questions(self, context: str, count: int = None) -> list[str]:
         """
@@ -41,6 +68,7 @@ class QuestionProcessor:
         Returns:
             生成的问题列表
         """
+        self._sync_config()
         settings = get_settings()
 
         if count is None:
@@ -62,12 +90,14 @@ class QuestionProcessor:
             ]
 
             for future in futures:
-                try:
-                    question = future.result().strip()
-                    if question:
-                        batch_questions.append(question)
-                except Exception as e:
-                    logger.error("提问处理失败: %s", e)
+                future_exc = future.exception()
+                if future_exc is not None:
+                    logger.error("提问处理失败: %s", future_exc)
+                    continue
+
+                question = future.result().strip()
+                if question:
+                    batch_questions.append(question)
 
         if batch_questions:
             removed_batches = self._question_queue.add(batch_timestamp, batch_questions)
@@ -98,6 +128,7 @@ class QuestionProcessor:
         Returns:
             随机选择的问题，如果没有问题则返回 None
         """
+        self._sync_config()
         latest_batch = self._question_queue.get_latest_batch()
 
         if latest_batch is None:

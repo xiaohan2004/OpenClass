@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from functools import lru_cache
 from typing import Any, Optional
 from urllib.request import urlopen
 
@@ -17,21 +18,59 @@ from app.utils.usage import extract_usage, usage_value
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TTS_MODEL = "qwen3-tts-flash"
-DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/api/v1"
-DEFAULT_VOICE = "Cherry"
-DEFAULT_LANGUAGE_TYPE = "Chinese"
-settings = get_settings()
 
-_tts_service: Optional["TTSService"] = None
+class _SettingsProxy:
+    def __init__(self) -> None:
+        self._overrides: dict[str, object] = {}
+
+    def __getattr__(self, item: str) -> object:
+        if item in self._overrides:
+            return self._overrides[item]
+        return getattr(get_settings(), item)
+
+    def __setattr__(self, key: str, value: object) -> None:
+        if key == "_overrides":
+            object.__setattr__(self, key, value)
+            return
+        self._overrides[key] = value
+
+    def __delattr__(self, item: str) -> None:
+        self._overrides.pop(item, None)
+
+
+settings = _SettingsProxy()
+
+
+@lru_cache(maxsize=8)
+def _build_tts_service(
+    model: str,
+    base_url: str,
+    voice: str,
+    language_type: str,
+    instructions: str,
+    optimize_instructions: bool,
+) -> "TTSService":
+    return TTSService(
+        model=model,
+        voice=voice,
+        language_type=language_type,
+        instructions=instructions,
+        optimize_instructions=optimize_instructions,
+        base_url=base_url,
+    )
 
 
 def get_tts_service() -> "TTSService":
     """获取 TTS 服务单例"""
-    global _tts_service
-    if _tts_service is None:
-        _tts_service = TTSService()
-    return _tts_service
+    runtime_settings = get_settings()
+    return _build_tts_service(
+        runtime_settings.tts_model,
+        runtime_settings.tts_base_url,
+        runtime_settings.tts_voice,
+        runtime_settings.tts_language_type,
+        runtime_settings.tts_instructions,
+        runtime_settings.tts_optimize_instructions,
+    )
 
 
 def _extract_audio_url(response: Any) -> str:
@@ -63,16 +102,25 @@ class TTSService:
         self,
         *,
         model: Optional[str] = None,
-        voice: str = DEFAULT_VOICE,
-        language_type: str = DEFAULT_LANGUAGE_TYPE,
+        voice: str | None = None,
+        language_type: str | None = None,
         instructions: Optional[str] = None,
         optimize_instructions: bool = False,
+        base_url: Optional[str] = None,
     ) -> None:
-        self.model = model or DEFAULT_TTS_MODEL
-        self.voice = voice
-        self.language_type = language_type
-        self.instructions = instructions
-        self.optimize_instructions = optimize_instructions
+        runtime_settings = get_settings()
+        self.model = model or runtime_settings.tts_model
+        self.voice = voice or runtime_settings.tts_voice
+        self.language_type = language_type or runtime_settings.tts_language_type
+        self.instructions = (
+            instructions
+            if instructions is not None
+            else runtime_settings.tts_instructions
+        )
+        self.optimize_instructions = (
+            optimize_instructions or runtime_settings.tts_optimize_instructions
+        )
+        self.base_url = base_url or runtime_settings.tts_base_url
 
     def synthesize_to_url(self, text: str) -> str:
         """合成文本并返回音频 URL"""
@@ -86,7 +134,7 @@ class TTSService:
         if not api_key:
             raise ValueError("Qwen_API_Key 未配置，无法调用 TTS 服务")
 
-        dashscope.base_http_api_url = DEFAULT_BASE_URL
+        dashscope.base_http_api_url = self.base_url
 
         call_kwargs: dict[str, Any] = {
             "model": self.model,

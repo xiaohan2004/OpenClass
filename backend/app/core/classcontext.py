@@ -12,6 +12,12 @@ from .segment_summary import SegmentSummaryProcessor
 segment_summary_processor = SegmentSummaryProcessor()  # 讲课内容总结处理器实例
 
 
+def _resolve_refresh_interval(value: object, fallback: float) -> float:
+    if isinstance(value, (int, float)) and value > 0:
+        return float(value)
+    return fallback
+
+
 class ClassContext:
     """维护课堂讲课文本及历史阶段小结"""
 
@@ -22,6 +28,10 @@ class ClassContext:
         self.history_summaries = HistorySummaryTimestampQueue()
         self.recent_lecture_window = settings.recent_lecture_window
         self.history_summary_window = settings.history_summary_window
+        self._config_refresh_interval_seconds = _resolve_refresh_interval(
+            getattr(settings, "settings_refresh_interval_seconds", 3.0), 3.0
+        )
+        self._config_loaded_at = time.monotonic()
         self.last_summary_index = 0
         self._summary_lock = Lock()
         self._transcript_lock = Lock()
@@ -29,6 +39,36 @@ class ClassContext:
         self._transcript_ids: list[int] = []
         self._transcript_time_ranges: list[tuple[int | None, int | None]] = []
         self._generated_question_ids: dict[str, list[int]] = defaultdict(list)
+
+    def _sync_config(self) -> None:
+        """同步热更新配置。"""
+        elapsed = time.monotonic() - self._config_loaded_at
+        if elapsed < self._config_refresh_interval_seconds:
+            return
+
+        settings = get_settings()
+        recent_lecture_window = getattr(
+            settings, "recent_lecture_window", self.recent_lecture_window
+        )
+        history_summary_window = getattr(
+            settings, "history_summary_window", self.history_summary_window
+        )
+
+        if isinstance(recent_lecture_window, int) and recent_lecture_window > 0:
+            self.recent_lecture_window = recent_lecture_window
+
+        if isinstance(history_summary_window, int) and history_summary_window > 0:
+            self.history_summary_window = history_summary_window
+
+        self._config_refresh_interval_seconds = _resolve_refresh_interval(
+            getattr(
+                settings,
+                "settings_refresh_interval_seconds",
+                self._config_refresh_interval_seconds,
+            ),
+            self._config_refresh_interval_seconds,
+        )
+        self._config_loaded_at = time.monotonic()
 
     def add_lecture_text(self, text_start_time: float, text: str) -> None:
         """新增一段讲课文本。"""
@@ -50,7 +90,9 @@ class ClassContext:
         with self._transcript_lock:
             return list(self._transcript_ids[start:end])
 
-    def get_transcript_time_range(self, start: int, end: int) -> tuple[int | None, int | None]:
+    def get_transcript_time_range(
+        self, start: int, end: int
+    ) -> tuple[int | None, int | None]:
         """按文本索引范围聚合最早开始时间与最晚结束时间。"""
         with self._transcript_lock:
             ranges = list(self._transcript_time_ranges[start:end])
@@ -58,7 +100,9 @@ class ClassContext:
         if not ranges:
             return None, None
 
-        start_candidates = [start_time for start_time, _ in ranges if start_time is not None]
+        start_candidates = [
+            start_time for start_time, _ in ranges if start_time is not None
+        ]
         end_candidates = [end_time for _, end_time in ranges if end_time is not None]
         summary_start_time = min(start_candidates) if start_candidates else None
         summary_end_time = max(end_candidates) if end_candidates else None
@@ -66,12 +110,15 @@ class ClassContext:
 
     def get_recent_transcript_ids_for_questions(self) -> list[int]:
         """获取当前提问上下文对应的最近转写 ID。"""
+        self._sync_config()
         with self._transcript_lock:
             total_len = len(self._transcript_ids)
             recent_start = max(0, total_len - self.recent_lecture_window)
             return list(self._transcript_ids[recent_start:])
 
-    def register_generated_questions(self, question_pairs: list[tuple[str, int]]) -> None:
+    def register_generated_questions(
+        self, question_pairs: list[tuple[str, int]]
+    ) -> None:
         """登记已入库的问题 ID，供后续提问时回写状态。"""
         with self._question_lock:
             for question_text, question_id in question_pairs:
@@ -91,6 +138,7 @@ class ClassContext:
 
     def get_questioning_texts(self) -> str:
         """获取用于提问生成的上下文"""
+        self._sync_config()
         total_len = self.lecture_texts.get_count()
         if total_len == 0:
             return ""
@@ -103,6 +151,7 @@ class ClassContext:
 
     def generate_summary_if_needed(self) -> dict | None:
         """在需要时生成阶段小结，返回生成结果及其对应范围。"""
+        self._sync_config()
         with self._summary_lock:
             if not self._need_summary():
                 return None
@@ -132,6 +181,7 @@ class ClassContext:
 
     def _need_summary(self) -> bool:
         """判断当前是否需要生成阶段小结"""
+        self._sync_config()
         total_len = self.lecture_texts.get_count()
 
         # 未总结的段落数

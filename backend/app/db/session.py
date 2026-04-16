@@ -1,12 +1,14 @@
 """数据库连接与初始化。"""
 
 from functools import lru_cache
+import os
 from pathlib import Path
 from typing import Generator
 
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.config import get_settings
+from app.config_defaults import DEFAULT_DATABASE_ECHO, DEFAULT_DATABASE_URL
+from app.db.config_store import ensure_default_settings
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -18,7 +20,7 @@ def _resolve_database_url(database_url: str) -> str:
     if not database_url.startswith(sqlite_prefix):
         return database_url
 
-    raw_path = database_url[len(sqlite_prefix):]
+    raw_path = database_url[len(sqlite_prefix) :]
     if not raw_path or raw_path == ":memory:":
         return database_url
 
@@ -33,12 +35,26 @@ def _resolve_database_url(database_url: str) -> str:
 @lru_cache()
 def get_engine():
     """获取数据库引擎单例。"""
-    settings = get_settings()
-    database_url = _resolve_database_url(settings.database_url)
-    connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
+    database_url = _resolve_database_url(
+        os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
+    )
+    database_echo_env = os.environ.get("DATABASE_ECHO")
+    if database_echo_env is None:
+        database_echo = DEFAULT_DATABASE_ECHO
+    else:
+        database_echo = database_echo_env.strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "y",
+            "on",
+        }
+    connect_args = (
+        {"check_same_thread": False} if database_url.startswith("sqlite") else {}
+    )
     return create_engine(
         database_url,
-        echo=settings.database_echo,
+        echo=database_echo,
         connect_args=connect_args,
     )
 
@@ -48,13 +64,18 @@ engine = get_engine()
 
 def init_db() -> None:
     """初始化数据库并创建所有表。"""
-    settings = get_settings()
-    database_url = _resolve_database_url(settings.database_url)
+    database_url = _resolve_database_url(
+        os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
+    )
     if database_url.startswith("sqlite:///"):
         db_path = Path(database_url.replace("sqlite:///", "", 1))
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    SQLModel.metadata.create_all(get_engine())
+    engine_instance = get_engine()
+    SQLModel.metadata.create_all(engine_instance)
+
+    with Session(engine_instance) as db:
+        ensure_default_settings(db)
 
 
 def get_session() -> Generator[Session, None, None]:

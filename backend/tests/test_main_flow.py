@@ -155,7 +155,8 @@ class TestBackgroundTasks(unittest.IsolatedAsyncioTestCase):
     ):
         """测试异常处理不会导致 Task exception was never retrieved。"""
         task = MagicMock(spec=asyncio.Task)
-        task.result.side_effect = RuntimeError("Background task failed")
+        task.cancelled.return_value = False
+        task.exception.return_value = RuntimeError("Background task failed")
 
         with patch("app.core.main_flow.logger.exception") as mock_logger:
             _handle_task_result(task)

@@ -29,6 +29,24 @@ def upsert_setting(db: Session, key: str, value: str) -> Setting:
     return setting
 
 
+def upsert_settings(db: Session, settings: dict[str, str]) -> list[Setting]:
+    """批量写入或更新系统设置。"""
+    updated_settings: list[Setting] = []
+    for key, value in settings.items():
+        setting = db.get(Setting, key)
+        if setting is None:
+            setting = Setting(key=key, value=value)
+        else:
+            setting.value = value
+        db.add(setting)
+        updated_settings.append(setting)
+
+    db.commit()
+    for setting in updated_settings:
+        db.refresh(setting)
+    return updated_settings
+
+
 def get_setting(db: Session, key: str) -> Optional[Setting]:
     """按键获取系统设置。"""
     return db.get(Setting, key)

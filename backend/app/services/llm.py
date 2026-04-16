@@ -4,6 +4,7 @@ LLM 服务层 - DeepSeek 集成
 
 import logging
 import time
+from functools import lru_cache
 
 from openai import OpenAI
 
@@ -19,23 +20,26 @@ from app.utils.usage import extract_usage, usage_value
 
 logger = logging.getLogger(__name__)
 
-_llm_client = None
+
+def _resolve_string_setting(value: object, fallback: str) -> str:
+    if isinstance(value, str) and value:
+        return value
+    return fallback
+
+
+@lru_cache(maxsize=8)
+def _build_llm_client(api_key: str, base_url: str) -> OpenAI:
+    return OpenAI(api_key=api_key, base_url=base_url)
 
 
 def get_llm_client() -> OpenAI:
     """获取 DeepSeek 客户端单例"""
-    global _llm_client
-    if _llm_client is None:
-        settings = get_settings()
-        api_key = settings.deepseek_api_key
-        base_url = settings.deepseek_base_url
+    settings = get_settings()
+    api_key = settings.deepseek_api_key
+    if not api_key:
+        raise ValueError("DeepSeek API Key 未配置，无法调用 LLM 服务")
 
-        if not api_key:
-            raise ValueError("DEEPSEEK_API_KEY 未在环境变量中设置，请检查 .env 文件")
-
-        _llm_client = OpenAI(api_key=api_key, base_url=base_url)
-
-    return _llm_client
+    return _build_llm_client(api_key, settings.deepseek_base_url)
 
 
 def _generate_with_prompt(
@@ -116,9 +120,14 @@ def generate_question(context: str) -> str:
         生成的问题字符串
     """
     try:
+        settings = get_settings()
+        system_prompt = _resolve_string_setting(
+            getattr(settings, "system_prompt_question", None),
+            SYSTEM_PROMPT_QUESTION,
+        )
         return _generate_with_prompt(
             context=context,
-            system_prompt=SYSTEM_PROMPT_QUESTION,
+            system_prompt=system_prompt,
         )
     except Exception as e:
         logger.error("问题生成失败: %s", e)
@@ -136,9 +145,14 @@ def generate_segment_summary(context: str) -> str:
         生成的阶段小结文本
     """
     try:
+        settings = get_settings()
+        system_prompt = _resolve_string_setting(
+            getattr(settings, "system_prompt_segment_summary", None),
+            SYSTEM_PROMPT_SEGMENT_SUMMARY,
+        )
         return _generate_with_prompt(
             context=context,
-            system_prompt=SYSTEM_PROMPT_SEGMENT_SUMMARY,
+            system_prompt=system_prompt,
         )
     except Exception as e:
         logger.error("阶段小结生成失败: %s", e)

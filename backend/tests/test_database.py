@@ -374,7 +374,8 @@ class TestDatabase(unittest.TestCase):
             self.assertEqual(get_setting(db, "feature.flag").value, "on")
             upsert_setting(db, "feature.flag", "off")
             self.assertEqual(get_setting(db, "feature.flag").value, "off")
-            self.assertEqual(len(list_settings(db)), 1)
+            self.assertGreater(len(list_settings(db)), 1)
+            self.assertIsNotNone(get_setting(db, "deepseek_base_url"))
 
             migration_record = create_migration_record(db, status=0)
             self.assertEqual(
@@ -423,7 +424,7 @@ class TestDatabase(unittest.TestCase):
             self.assertEqual(len(list_llm_infos(db)), 0)
 
             self.assertTrue(delete_setting(db, setting.key))
-            self.assertEqual(len(list_settings(db)), 0)
+            self.assertGreater(len(list_settings(db)), 0)
 
             self.assertTrue(delete_migration_record(db, migration_record.version))
             self.assertEqual(len(list_migration_records(db)), 0)

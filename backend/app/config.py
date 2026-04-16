@@ -2,77 +2,120 @@
 配置管理 - 提示词、模型参数
 """
 
-from functools import lru_cache
-from pydantic_settings import BaseSettings, SettingsConfigDict
+import time
+from dataclasses import dataclass
+
+from pydantic import BaseModel, ConfigDict
+from sqlmodel import Session
+
+from app.config_defaults import (
+    DEFAULT_SETTINGS_VALUES,
+    DEFAULT_SYSTEM_PROMPT_QUESTION,
+    DEFAULT_SYSTEM_PROMPT_SEGMENT_SUMMARY,
+)
+from app.db import get_engine
+from app.db.config_store import load_settings_dict
 
 
-class Settings(BaseSettings):
-    """应用配置"""
+class Settings(BaseModel):
+    """应用配置。"""
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        case_sensitive=False,
-        protected_namespaces=("settings_",),
-    )
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
     # LLM 配置
-    deepseek_api_key: str = ""
-    deepseek_base_url: str = "https://api.deepseek.com"
-    qwen_api_key: str = ""
+    deepseek_api_key: str = DEFAULT_SETTINGS_VALUES["deepseek_api_key"]
+    deepseek_base_url: str = DEFAULT_SETTINGS_VALUES["deepseek_base_url"]
+    qwen_api_key: str = DEFAULT_SETTINGS_VALUES["qwen_api_key"]
 
     # 模型参数
-    model_name: str = "deepseek-chat"
-    max_tokens: int = 1024
-    temperature: float = 1.7
+    model_name: str = DEFAULT_SETTINGS_VALUES["model_name"]
+    max_tokens: int = DEFAULT_SETTINGS_VALUES["max_tokens"]
+    temperature: float = DEFAULT_SETTINGS_VALUES["temperature"]
 
     # 提问队列配置
-    max_questions: int = 10  # 问题队列最大长度
+    max_questions: int = DEFAULT_SETTINGS_VALUES["max_questions"]
 
     # 并发配置
-    question_concurrent_workers: int = 1  # 并发提问的线程数
-    
+    question_concurrent_workers: int = DEFAULT_SETTINGS_VALUES["question_concurrent_workers"]
+
     # 上下文维护配置
-    recent_lecture_window: int = 240  # 最近讲解文本的段落数
-    history_summary_window: int = 600  # 总结历史要点的段落数
-    
+    recent_lecture_window: int = DEFAULT_SETTINGS_VALUES["recent_lecture_window"]
+    history_summary_window: int = DEFAULT_SETTINGS_VALUES["history_summary_window"]
+    settings_refresh_interval_seconds: float = DEFAULT_SETTINGS_VALUES[
+        "settings_refresh_interval_seconds"
+    ]
+
     # 数据库配置
-    database_url: str = "sqlite:///backend/data/openclass.db"
-    database_echo: bool = False
+    database_url: str = DEFAULT_SETTINGS_VALUES["database_url"]
+    database_echo: bool = DEFAULT_SETTINGS_VALUES["database_echo"]
 
-@lru_cache()
+    # 提示词配置
+    system_prompt_question: str = DEFAULT_SETTINGS_VALUES["system_prompt_question"]
+    system_prompt_segment_summary: str = DEFAULT_SETTINGS_VALUES[
+        "system_prompt_segment_summary"
+    ]
+
+    # ASR 配置
+    asr_model: str = DEFAULT_SETTINGS_VALUES["asr_model"]
+    asr_base_url: str = DEFAULT_SETTINGS_VALUES["asr_base_url"]
+    asr_enable_itn: bool = DEFAULT_SETTINGS_VALUES["asr_enable_itn"]
+    asr_language: str = DEFAULT_SETTINGS_VALUES["asr_language"]
+
+    # TTS 配置
+    tts_model: str = DEFAULT_SETTINGS_VALUES["tts_model"]
+    tts_base_url: str = DEFAULT_SETTINGS_VALUES["tts_base_url"]
+    tts_voice: str = DEFAULT_SETTINGS_VALUES["tts_voice"]
+    tts_language_type: str = DEFAULT_SETTINGS_VALUES["tts_language_type"]
+    tts_instructions: str = DEFAULT_SETTINGS_VALUES["tts_instructions"]
+    tts_optimize_instructions: bool = DEFAULT_SETTINGS_VALUES[
+        "tts_optimize_instructions"
+    ]
+
+
+@dataclass
+class _SettingsCache:
+    settings: Settings | None = None
+    loaded_at: float = 0.0
+
+    def clear(self) -> None:
+        self.settings = None
+        self.loaded_at = 0.0
+
+
+_settings_cache = _SettingsCache()
+
+
+def _build_settings() -> Settings:
+    """从数据库读取并构建配置快照。"""
+    with Session(get_engine()) as db:
+        settings_dict = load_settings_dict(db)
+    return Settings(**settings_dict)
+
+
+def refresh_settings_cache() -> None:
+    """清空配置缓存。"""
+    _settings_cache.clear()
+
+
 def get_settings() -> Settings:
-    """获取配置单例"""
-    return Settings()
+    """获取配置快照，按刷新间隔自动从数据库重新加载。"""
+    if _settings_cache.settings is not None:
+        elapsed = time.monotonic() - _settings_cache.loaded_at
+        if elapsed < _settings_cache.settings.settings_refresh_interval_seconds:
+            return _settings_cache.settings
+
+    settings = _build_settings()
+    _settings_cache.settings = settings
+    _settings_cache.loaded_at = time.monotonic()
+    return settings
 
 
-# 提示词配置
-SYSTEM_PROMPT_QUESTION = """你是一名正在课堂上认真听讲的初学者学生。我会提供两部分内容：
-1. 【历史要点】：之前讲过的内容概要，供你了解上下文
-2. 【近期讲解】：老师刚刚讲的内容（可能存在语音转文字的不准确之处）
+def _cache_clear() -> None:
+    refresh_settings_cache()
 
-请你主要针对【近期讲解】提出一个在听课过程中自然想到、可能会当场举手问老师的问题。可以结合【历史要点】来思考。
 
-提问优先级：
-首先，老师讲述有错误，要优先提出质疑性的问题。
-其次，如果存在不能理解的内容，提出澄清性的问题。
-最后，基于老师讲解内容的延伸性问题，可以是结合自身经验也可以是对知识的扩展。
+get_settings.cache_clear = _cache_clear  # type: ignore[attr-defined]
 
-要求：
-- 你只是一个初学者，不要提出过于专业或复杂的问题，问题的复杂度和深度不要过高
-- 问问题的方式要简洁，要考虑这个是要转换成语音的
-- 字数控制在50字以内
-- 问题要紧扣老师的讲解内容，体现你在理解时的思考
-- 不要自己解答问题，不要带着答案问问题，不要像一个已经学过的相关知识的学生提问
-- 提问语气要真实、口语化，像真实课堂上的学生发问
-- 只输出问题本身，不要回答、解释或添加多余文字"""
 
-SYSTEM_PROMPT_SEGMENT_SUMMARY = """你是一名课堂内容整理助手。
-
-我会提供一段老师刚刚讲的内容（可能存在语音转文字的不准确之处），请你基于这段内容生成一段简要的阶段小结。
-
-要求：
-- 聚焦老师刚刚讲过的核心内容
-- 语言简洁、通顺、清晰、自然
-- 适合作为课堂进行中的阶段性小结
-- 不要编造上下文中没有的信息
-- 只输出小结本身，不要添加标题、说明或其他额外文字"""
+SYSTEM_PROMPT_QUESTION = DEFAULT_SYSTEM_PROMPT_QUESTION
+SYSTEM_PROMPT_SEGMENT_SUMMARY = DEFAULT_SYSTEM_PROMPT_SEGMENT_SUMMARY

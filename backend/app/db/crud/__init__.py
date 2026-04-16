@@ -1,6 +1,12 @@
 """数据库 CRUD 导出。"""
 
-from .courses import create_course, delete_course, get_course_by_id, list_courses, update_course
+from .courses import (
+    create_course,
+    delete_course,
+    get_course_by_id,
+    list_courses,
+    update_course,
+)
 from .questions import (
     create_question,
     delete_question,
@@ -26,7 +32,14 @@ from .segment_summaries import (
     list_segment_summary_transcript_maps,
     update_segment_summary,
 )
-from .sessions import close_session, create_session, delete_session, get_session_by_id, list_sessions, update_session
+from .sessions import (
+    close_session,
+    create_session,
+    delete_session,
+    get_session_by_id,
+    list_sessions,
+    update_session,
+)
 from .settings import (
     create_llm_info,
     create_migration_record,
@@ -59,6 +72,7 @@ from .settings import (
     update_relay_log,
     update_stats_hourly,
     update_stats_total,
+    upsert_settings,
     upsert_setting,
     upsert_stats_total,
     upsert_stats_daily,
@@ -142,6 +156,7 @@ __all__ = [
     "update_session",
     "update_stats_hourly",
     "update_stats_total",
+    "upsert_settings",
     "update_transcript",
     "upsert_setting",
     "upsert_stats_total",

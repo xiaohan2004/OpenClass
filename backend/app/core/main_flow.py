@@ -27,8 +27,20 @@ logger = logging.getLogger(__name__)
 
 
 question_processor = QuestionProcessor()  # 提问处理器实例
-asr = get_asr_service()  # ASR 服务实例
-tts = get_tts_service()  # TTS 服务实例
+
+
+class _ServiceProxy:
+    """按需获取最新服务实例的代理。"""
+
+    def __init__(self, getter):
+        self._getter = getter
+
+    def __getattr__(self, item):
+        return getattr(self._getter(), item)
+
+
+asr = _ServiceProxy(get_asr_service)  # ASR 服务代理
+tts = _ServiceProxy(get_tts_service)  # TTS 服务代理
 
 
 async def handle_audio(
@@ -187,10 +199,12 @@ async def _background_tasks_processing(
 
 def _handle_task_result(task: asyncio.Task) -> None:
     """统一处理异常（避免 Task exception was never retrieved）"""
-    try:
-        task.result()
-    except Exception:
-        logger.exception("Background processing failed")
+    if task.cancelled():
+        return
+
+    exc = task.exception()
+    if exc is not None:
+        logger.exception("Background processing failed", exc_info=exc)
 
 
 def _persist_transcript(
