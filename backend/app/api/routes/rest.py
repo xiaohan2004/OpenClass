@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict
 from sqlmodel import Session
@@ -566,8 +566,23 @@ def list_session_segment_summaries_endpoint(
 
 
 @router.get("/relay-logs")
-def list_relay_logs_endpoint(db: Session = Depends(get_db_session)):
-    return _success(_serialize_models(list_relay_logs(db), RelayLogRead))
+def list_relay_logs_endpoint(
+    db: Session = Depends(get_db_session),
+    service_type: str | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    return _success(
+        _serialize_models(
+            list_relay_logs(
+                db,
+                service_type=service_type,
+                limit=limit,
+                offset=offset,
+            ),
+            RelayLogRead,
+        )
+    )
 
 
 @router.get("/relay-logs/{relay_log_id}")

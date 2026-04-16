@@ -72,8 +72,24 @@ export function fetchStatsHourlies() {
   return apiRequest('/api/stats/hourlies')
 }
 
-export function fetchRelayLogs() {
-  return apiRequest('/api/relay-logs')
+export function fetchRelayLogs(params = {}) {
+  const query = new URLSearchParams()
+
+  if (params.serviceType) {
+    query.set('service_type', params.serviceType)
+  }
+
+  if (Number.isFinite(params.limit)) {
+    query.set('limit', String(params.limit))
+  }
+
+  if (Number.isFinite(params.offset)) {
+    query.set('offset', String(params.offset))
+  }
+
+  const queryString = query.toString()
+  const path = queryString ? `/api/relay-logs?${queryString}` : '/api/relay-logs'
+  return apiRequest(path)
 }
 
 export function fetchRelayLogById(relayLogId) {

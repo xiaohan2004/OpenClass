@@ -110,9 +110,27 @@ def get_relay_log_by_id(db: Session, relay_log_id: int) -> Optional[RelayLog]:
     return db.get(RelayLog, relay_log_id)
 
 
-def list_relay_logs(db: Session) -> list[RelayLog]:
-    """获取请求日志列表。"""
-    statement = select(RelayLog).order_by(RelayLog.__table__.c.id.desc())
+def list_relay_logs(
+    db: Session,
+    *,
+    service_type: Optional[str] = None,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
+) -> list[RelayLog]:
+    """获取请求日志列表，支持服务分类和分页。"""
+    statement = select(RelayLog)
+
+    if service_type:
+        statement = statement.where(RelayLog.service_type == service_type)
+
+    statement = statement.order_by(RelayLog.__table__.c.id.desc())
+
+    if offset is not None and offset > 0:
+        statement = statement.offset(offset)
+
+    if limit is not None and limit > 0:
+        statement = statement.limit(limit)
+
     return list(db.exec(statement))
 
 
@@ -176,7 +194,9 @@ def list_stats_totals(db: Session) -> list[StatsTotal]:
     return list(db.exec(statement))
 
 
-def update_stats_total(db: Session, stats_total_id: int, **kwargs) -> Optional[StatsTotal]:
+def update_stats_total(
+    db: Session, stats_total_id: int, **kwargs
+) -> Optional[StatsTotal]:
     """更新全量累计统计。"""
     stats_total = db.get(StatsTotal, stats_total_id)
     if stats_total is None:
@@ -221,7 +241,9 @@ def delete_stats_total(db: Session, stats_total_id: int) -> bool:
     return True
 
 
-def upsert_stats_daily(db: Session, date: str, service_type: str, **kwargs) -> StatsDaily:
+def upsert_stats_daily(
+    db: Session, date: str, service_type: str, **kwargs
+) -> StatsDaily:
     """按日期和服务类型写入或更新按日统计。"""
     stats_daily = db.get(StatsDaily, (date, service_type))
     if stats_daily is None:
@@ -263,9 +285,13 @@ def delete_stats_daily(db: Session, date: str, service_type: str) -> bool:
     return True
 
 
-def create_stats_hourly(db: Session, date: str, hour: int, service_type: str, **kwargs) -> StatsHourly:
+def create_stats_hourly(
+    db: Session, date: str, hour: int, service_type: str, **kwargs
+) -> StatsHourly:
     """创建按小时统计。"""
-    stats_hourly = StatsHourly(date=date, hour=hour, service_type=service_type, **kwargs)
+    stats_hourly = StatsHourly(
+        date=date, hour=hour, service_type=service_type, **kwargs
+    )
     db.add(stats_hourly)
     db.commit()
     db.refresh(stats_hourly)
@@ -342,7 +368,9 @@ def delete_stats_hourly(db: Session, date: str, hour: int, service_type: str) ->
     return True
 
 
-def create_migration_record(db: Session, status: Optional[int] = None) -> MigrationRecord:
+def create_migration_record(
+    db: Session, status: Optional[int] = None
+) -> MigrationRecord:
     """创建数据库迁移记录。"""
     record = MigrationRecord(status=status)
     db.add(record)
@@ -351,18 +379,24 @@ def create_migration_record(db: Session, status: Optional[int] = None) -> Migrat
     return record
 
 
-def get_migration_record_by_version(db: Session, version: int) -> Optional[MigrationRecord]:
+def get_migration_record_by_version(
+    db: Session, version: int
+) -> Optional[MigrationRecord]:
     """按版本获取迁移记录。"""
     return db.get(MigrationRecord, version)
 
 
 def list_migration_records(db: Session) -> list[MigrationRecord]:
     """获取全部迁移记录。"""
-    statement = select(MigrationRecord).order_by(MigrationRecord.__table__.c.version.desc())
+    statement = select(MigrationRecord).order_by(
+        MigrationRecord.__table__.c.version.desc()
+    )
     return list(db.exec(statement))
 
 
-def update_migration_record(db: Session, version: int, **kwargs) -> Optional[MigrationRecord]:
+def update_migration_record(
+    db: Session, version: int, **kwargs
+) -> Optional[MigrationRecord]:
     """更新迁移记录。"""
     record = db.get(MigrationRecord, version)
     if record is None:
