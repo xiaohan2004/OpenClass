@@ -6,7 +6,7 @@
     <header class="top-bar glass-panel">
       <div class="top-bar__left">
         <div class="top-selector-stack">
-          <p class="eyebrow">实时课堂助手</p>
+          <p class="eyebrow">课堂模拟学生提问助手</p>
 
           <div class="top-selectors-inline">
             <div class="mini-selector-row">
@@ -216,6 +216,9 @@
     </main>
 
     <section class="debug-dock">
+      <button class="ghost-button more-toggle" type="button" @click="moreOverlayOpen = !moreOverlayOpen">
+        {{ moreOverlayOpen ? '主页' : '更多' }}
+      </button>
       <button class="ghost-button debug-toggle" type="button" @click="debugPanelOpen = !debugPanelOpen">
         {{ debugPanelOpen ? '收起' : '调试' }}
       </button>
@@ -227,6 +230,10 @@
         </div>
       </transition>
     </section>
+
+    <transition name="overlay-fade">
+      <MoreLayout v-if="moreOverlayOpen" />
+    </transition>
 
     <transition name="drawer">
       <section v-if="showCreateCourseModal" class="modal-mask">
@@ -287,7 +294,11 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
+import MoreLayout from './components/MoreLayout.vue'
 import { useClassroomPage } from './composables/useClassroomPage'
+
+const moreOverlayOpen = ref(false)
 
 const {
   sessionStatus,

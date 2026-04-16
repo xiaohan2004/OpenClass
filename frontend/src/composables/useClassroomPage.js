@@ -12,7 +12,7 @@ import {
   fetchStatsTotals,
   pauseSession,
   startSession
-} from '../api/classroomApi'
+} from '../api/api'
 
 const AUDIO_CHUNK_MS = 5000
 const RECEIVE_DRAIN_MS = 12000

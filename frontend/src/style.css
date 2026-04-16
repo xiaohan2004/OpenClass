@@ -642,8 +642,15 @@ button {
   position: fixed;
   left: 20px;
   bottom: 16px;
-  z-index: 22;
+  z-index: 28;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   width: fit-content;
+}
+
+.more-toggle {
+  background: rgba(255, 255, 255, 0.62);
 }
 
 .debug-toggle {
@@ -765,6 +772,7 @@ button {
   gap: 10px;
 }
 
+
 .drawer-group + .drawer-group {
   margin-top: 22px;
 }
@@ -885,6 +893,16 @@ button {
   transform: translateX(18px);
 }
 
+.overlay-fade-enter-active,
+.overlay-fade-leave-active {
+  transition: opacity 220ms ease;
+}
+
+.overlay-fade-enter-from,
+.overlay-fade-leave-to {
+  opacity: 0;
+}
+
 @keyframes rise-in {
   from {
     opacity: 0;
@@ -985,6 +1003,7 @@ button {
   .left-sidebar {
     grid-template-columns: 1fr;
   }
+
 }
 
 @media (max-width: 560px) {
@@ -1033,9 +1052,11 @@ button {
   .debug-dock {
     left: 14px;
     bottom: 12px;
+    gap: 8px;
   }
 
   .debug-panel {
     width: min(360px, calc(100vw - 24px));
   }
+
 }
