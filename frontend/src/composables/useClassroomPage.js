@@ -47,6 +47,7 @@ export function useClassroomPage() {
   })
 
   const transcriptFeed = ref(null)
+  const summaryFeed = ref(null)
   const queueFeed = ref(null)
   let timerTick = null
   let wsCloseTimer = null
@@ -196,6 +197,45 @@ export function useClassroomPage() {
 
   const micLevelPercent = computed(() => Math.max(0, Math.min(100, Math.round(micLevel.value * 100))))
 
+  const askingStatusLabel = computed(() => {
+    if (!selectedSessionId.value) {
+      return '未选择课堂'
+    }
+
+    if (sessionStatus.value === 'paused') {
+      return '已暂停'
+    }
+
+    if (sessionStatus.value !== 'recording') {
+      return '待机'
+    }
+
+    const queueCount = queuedQuestions.value.length
+    if (queueCount > 0) {
+      return `待提问（${queueCount}）`
+    }
+    return '提问中'
+  })
+
+  const currentKnowledgePoint = computed(() => keywords.value[0] || '暂无')
+
+  const currentDifficultyLabel = computed(() => {
+    const latestQuestion = queuedQuestions.value[queuedQuestions.value.length - 1] || null
+    const rawScore = Number(latestQuestion?.score)
+    if (!Number.isFinite(rawScore)) {
+      return '待判定'
+    }
+
+    const normalizedScore = rawScore <= 1 ? rawScore * 100 : rawScore
+    if (normalizedScore >= 70) {
+      return '较高'
+    }
+    if (normalizedScore >= 40) {
+      return '中等'
+    }
+    return '较低'
+  })
+
   function toUnixSeconds(ts) {
     if (typeof ts === 'number' && Number.isFinite(ts)) {
       return ts > 1e12 ? Math.floor(ts / 1000) : Math.floor(ts)
@@ -228,6 +268,12 @@ export function useClassroomPage() {
   function scrollQueueToBottom() {
     if (queueFeed.value) {
       queueFeed.value.scrollTop = queueFeed.value.scrollHeight
+    }
+  }
+
+  function scrollSummaryToBottom() {
+    if (summaryFeed.value) {
+      summaryFeed.value.scrollTop = summaryFeed.value.scrollHeight
     }
   }
 
@@ -558,7 +604,8 @@ export function useClassroomPage() {
             id: item.id,
             order: '',
             text: item.text,
-            time: formatTime(item.start_time || item.created_at || now)
+            time: formatTime(item.start_time || item.created_at || now),
+            score: item.score
           }))
 
         const merged = [...queuedQuestions.value, ...nextItems]
@@ -593,6 +640,7 @@ export function useClassroomPage() {
       if (transcriptFeed.value) {
         transcriptFeed.value.scrollTop = transcriptFeed.value.scrollHeight
       }
+      scrollSummaryToBottom()
     })
   }
 
@@ -934,7 +982,8 @@ export function useClassroomPage() {
         id: item.id,
         order: `Q${index + 1}`,
         text: item.text,
-        time: formatTime(item.start_time || item.created_at)
+        time: formatTime(item.start_time || item.created_at),
+        score: item.score
       }))
 
     const totalList = Array.isArray(statsData) ? statsData : []
@@ -990,6 +1039,7 @@ export function useClassroomPage() {
     if (transcriptFeed.value) {
       transcriptFeed.value.scrollTop = transcriptFeed.value.scrollHeight
     }
+    scrollSummaryToBottom()
     scrollQueueToBottom()
   }
 
@@ -1240,6 +1290,7 @@ export function useClassroomPage() {
     courseForm,
     sessionForm,
     transcriptFeed,
+    summaryFeed,
     queueFeed,
     transcriptItems,
     summaries,
@@ -1251,6 +1302,9 @@ export function useClassroomPage() {
     canEndSession,
     timerLabel,
     keywords,
+    askingStatusLabel,
+    currentKnowledgePoint,
+    currentDifficultyLabel,
     availableMicrophones,
     selectedMicrophoneId,
     micLevelPercent,

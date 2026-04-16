@@ -86,7 +86,7 @@
 
         <section class="sidebar-group">
           <p class="sidebar-title">实时摘要</p>
-          <div class="summary-list">
+          <div ref="summaryFeed" class="summary-list">
             <p v-for="summary in summaries" :key="summary.id" class="summary-item">
               <span>{{ summary.time }}</span>
               {{ summary.text }}
@@ -146,6 +146,21 @@
             </div>
           </section>
 
+          <section class="ask-status-bar glass-panel">
+            <div class="ask-status-item">
+              <span>提问状态</span>
+              <strong>{{ askingStatusLabel }}</strong>
+            </div>
+            <div class="ask-status-item">
+              <span>当前知识点</span>
+              <strong>{{ currentKnowledgePoint }}</strong>
+            </div>
+            <div class="ask-status-item">
+              <span>难度</span>
+              <strong>{{ currentDifficultyLabel }}</strong>
+            </div>
+          </section>
+
           <section class="control-bar glass-panel simple-actions">
             <button
               class="primary-button"
@@ -188,27 +203,6 @@
                 </div>
               </article>
               <p v-if="queuedQuestions.length === 0" class="empty-text">暂无待提问问题</p>
-            </div>
-          </section>
-
-          <section class="drawer-group">
-            <div class="drawer-header">
-              <p>日志 / 统计</p>
-              <span>实时概览</span>
-            </div>
-
-            <div class="stats-list">
-              <div v-for="stat in stats" :key="stat.label" class="stat-row">
-                <span>{{ stat.label }}</span>
-                <strong>{{ stat.value }}</strong>
-              </div>
-            </div>
-
-            <div class="log-list">
-              <p v-for="log in logs" :key="log" class="log-item">
-                {{ log }}
-              </p>
-              <p v-if="logs.length === 0" class="empty-text">暂无日志</p>
             </div>
           </section>
         </aside>
@@ -335,17 +329,19 @@ const {
   courseForm,
   sessionForm,
   transcriptFeed,
+  summaryFeed,
   queueFeed,
   transcriptItems,
   summaries,
   queuedQuestions,
-  stats,
-  logs,
   sessionStatusLabel,
   canStartSession,
   canEndSession,
   timerLabel,
   keywords,
+  askingStatusLabel,
+  currentKnowledgePoint,
+  currentDifficultyLabel,
   availableMicrophones,
   selectedMicrophoneId,
   micLevelPercent,
