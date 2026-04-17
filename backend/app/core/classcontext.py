@@ -149,6 +149,11 @@ class ClassContext:
         history_summary = self.history_summaries.get_valid_summaries(recent_start)
         return f"【历史要点】\n{history_summary}\n\n【近期讲解】\n{recent_lecture}"
 
+    def get_latest_lecture_texts(self) -> str:
+        """获取最近讲解的纯文本（不包含历史要点）"""
+        self._sync_config()
+        return self.lecture_texts.get_latest_texts(self.recent_lecture_window)
+
     def generate_summary_if_needed(self) -> dict | None:
         """在需要时生成阶段小结，返回生成结果及其对应范围。"""
         self._sync_config()

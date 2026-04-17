@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
+import os
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict
 from sqlmodel import Session
@@ -13,9 +18,11 @@ from app.api.deps import get_db_session
 from app.config import refresh_settings_cache
 from app.config_defaults import DEFAULT_SETTINGS_VALUES, SENSITIVE_SETTING_KEYS
 from app.db.config_store import dump_settings_dict, load_settings_dict
+from app.core.report import ReportProcessor
 from app.db.crud import (
     close_session,
     create_course,
+    create_report,
     create_session,
     get_keyword_by_id,
     get_knowledge_point_by_id,
@@ -52,11 +59,14 @@ from app.db.crud import (
     upsert_settings,
     update_course,
     update_question,
+    update_report,
     update_session,
     delete_course,
     delete_session,
 )
 from app.utils.time import now_ts
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["rest"])
 
@@ -761,6 +771,206 @@ def list_session_reports_endpoint(
     _require_session(db, session_id)
     return _success(
         _serialize_models(list_reports_by_session(db, session_id), ReportRead)
+    )
+
+
+async def _generate_report_background(report_id: int, session_id: int, material: str):
+    """后台异步生成报告，生成 PDF 并保存，更新数据库。"""
+    try:
+        logger.info("开始生成课后报告 (report_id=%d)", report_id)
+        processor = ReportProcessor()
+        html_content = processor.generate_report(material=material, max_iters=1)
+
+        # 生成 PDF 文件
+        pdf_file_path = await asyncio.to_thread(
+            _save_report_as_pdf,
+            report_id,
+            session_id,
+            html_content,
+        )
+
+        # 更新数据库中的报告内容和文件路径
+        from app.db import get_engine
+
+        with Session(get_engine()) as db:
+            update_report(
+                db,
+                report_id,
+                content=html_content,
+                file_path=pdf_file_path,
+            )
+
+        logger.info("课后报告生成完成 (report_id=%d, pdf=%s)", report_id, pdf_file_path)
+    except Exception as e:
+        logger.error("课后报告生成失败 (report_id=%d): %s", report_id, e)
+        # 记录错误信息到报告内容中
+        from app.db import get_engine
+
+        with Session(get_engine()) as db:
+            update_report(db, report_id, content=f"<p>报告生成失败: {str(e)}</p>")
+
+
+def _save_report_as_pdf(report_id: int, session_id: int, html_content: str) -> str:
+    """将 HTML 报告转换为 PDF 并保存。返回相对文件路径。"""
+    try:
+        from weasyprint import HTML, CSS
+    except ImportError:
+        logger.error("weasyprint 未安装，无法生成 PDF")
+        raise RuntimeError("PDF 生成库缺失，请安装 weasyprint")
+
+    # 创建 data/reports 文件夹
+    reports_dir = Path("data") / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
+    # 生成文件名（使用报告 ID 和时间戳）
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    pdf_filename = f"report_session{session_id}_id{report_id}_{timestamp}.pdf"
+    pdf_path = reports_dir / pdf_filename
+
+    try:
+        # 使用 weasyprint 转换 HTML 为 PDF
+        HTML(string=html_content).write_pdf(str(pdf_path))
+
+        # 返回相对路径
+        relative_path = str(pdf_path).replace("\\", "/")
+        logger.info("PDF 已保存: %s", relative_path)
+        return relative_path
+    except Exception as e:
+        logger.error("PDF 生成失败: %s", e)
+        raise
+
+
+def _build_report_material(
+    session_id: int,
+    course_id: int,
+    db: Session,
+) -> str:
+    """收集所有课堂数据并构建报告材料（从旧到新排序，带标题）。"""
+    import json
+
+    parts = []
+
+    # 1. 课程信息
+    course = get_course_by_id(db, course_id)
+    if course:
+        parts.append("# 课程信息\n")
+        parts.append(f"课程代码: {course.code or 'N/A'}\n")
+        parts.append(f"课程名称: {course.name or 'N/A'}\n")
+        parts.append(f"授课教师: {course.teacher or 'N/A'}\n")
+        parts.append(f"课程描述: {course.description or 'N/A'}\n\n")
+
+    # 2. 课堂信息
+    session = get_session_by_id(db, session_id)
+    if session:
+        parts.append("# 课堂信息\n")
+        parts.append(f"课堂标题: {session.title or 'N/A'}\n")
+        parts.append(f"课堂序号: {session.seq or 'N/A'}\n\n")
+
+    # 3. 转写分段（从旧到新）
+    transcripts = list_transcripts_by_session(db, session_id)
+    if transcripts:
+        parts.append("# 老师讲课原文（可能有转译错误）\n\n")
+        for transcript in transcripts:
+            parts.append(f"{transcript.text}")
+        parts.append("\n\n") 
+
+    # 4. 分段小结（从旧到新）
+    summaries = list_segment_summaries_by_session(db, session_id)
+    # 需要反序因为默认是新到旧
+    summaries_asc = sorted(summaries, key=lambda x: x.created_at)
+    if summaries_asc:
+        parts.append("# 分段小结\n\n")
+        for summary in summaries_asc:
+            parts.append(f"{summary.text}\n")
+        parts.append("\n\n")
+
+    # 5. 问题（从旧到新）
+    questions = list_questions_by_session(db, session_id)
+    # 需要反序因为默认是新到旧
+    questions_asc = sorted(questions, key=lambda x: x.created_at)
+    if questions_asc:
+        parts.append("# 课堂提问\n\n")
+        for q in questions_asc:
+            parts.append(f"{q.text}\n")
+            parts.append(f"状态: {q.status or 'N/A'}\n")
+            parts.append(f"分数: {q.score or 'N/A'}\n\n")
+
+    # 6. 关键词（从旧到新）
+    keywords = list_keywords_by_session(db, session_id)
+    # 需要反序因为默认是新到旧
+    keywords_asc = sorted(keywords, key=lambda x: x.created_at)
+    if keywords_asc:
+        parts.append("# 关键词\n\n")
+        for kw in keywords_asc:
+            try:
+                keyword_list = json.loads(kw.keyword_sets)
+                parts.append(f"{'、'.join(keyword_list)}\n\n")
+            except (json.JSONDecodeError, TypeError):
+                parts.append(f"{kw.keyword_sets}\n\n")
+
+    # 7. 知识点（从旧到新）
+    knowledge_points = list_knowledge_points_by_session(db, session_id)
+    # 需要反序因为默认是新到旧
+    kp_asc = sorted(knowledge_points, key=lambda x: x.created_at)
+    if kp_asc:
+        parts.append("# 知识点\n\n")
+        for kp in kp_asc:
+            parts.append(f"名称: {kp.name}\n")
+            if kp.description:
+                parts.append(f"描述: {kp.description}\n")
+            if kp.difficulty:
+                parts.append(f"难度: {kp.difficulty}\n")
+            parts.append("\n")
+
+    # 8. 小测题目（从旧到新）
+    quiz_items = list_quiz_items_by_session(db, session_id)
+    # 需要反序因为默认是新到旧
+    quiz_asc = sorted(quiz_items, key=lambda x: x.created_at)
+    if quiz_asc:
+        parts.append("# 小测题目\n\n")
+        for quiz in quiz_asc:
+            parts.append(f"题型: {quiz.type or 'N/A'}\n")
+            parts.append(f"问题: {quiz.question}\n")
+            if quiz.answer:
+                parts.append(f"答案: {quiz.answer}\n")
+            if quiz.explanation:
+                parts.append(f"解释: {quiz.explanation}\n")
+            parts.append("\n")
+
+    return "".join(parts)
+
+
+@router.post("/sessions/{session_id}/reports")
+def generate_report_endpoint(
+    session_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db_session),
+):
+    """触发课后报告生成（异步），立即返回"""
+    session = _require_session(db, session_id)
+
+    # 验证有转写数据
+    transcripts = list_transcripts_by_session(db, session_id)
+    if not transcripts:
+        raise HTTPException(status_code=400, detail="该课堂没有转写数据，无法生成报告")
+
+    # 构建完整的报告材料（包含所有课堂数据）
+    material = _build_report_material(session_id, session.course_id, db)
+
+    # 创建报告记录（初始状态，内容为空）
+    report = create_report(db, session_id=session_id, content=None)
+
+    # 后台异步生成任务（FastAPI BackgroundTasks）
+    background_tasks.add_task(
+        _generate_report_background,
+        report.id,
+        session_id,
+        material,
+    )
+
+    return _success(
+        _serialize_model(report, ReportRead),
+        "报告生成已启动，请稍候...",
     )
 
 

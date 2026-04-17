@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlmodel import Session
 
 from app.config_defaults import (
+    DEFAULT_KEYWORD_KNOWLEDGE_QUIZ_TRIGGER_INTERVAL,
     DEFAULT_SETTINGS_VALUES,
     DEFAULT_SYSTEM_PROMPT_KNOWLEDGE,
     DEFAULT_SYSTEM_PROMPT_KEYWORDS,
@@ -46,6 +47,9 @@ class Settings(BaseModel):
     # 上下文维护配置
     recent_lecture_window: int = DEFAULT_SETTINGS_VALUES["recent_lecture_window"]
     history_summary_window: int = DEFAULT_SETTINGS_VALUES["history_summary_window"]
+    keyword_knowledge_quiz_trigger_interval: int = DEFAULT_SETTINGS_VALUES[
+        "keyword_knowledge_quiz_trigger_interval"
+    ]
     settings_refresh_interval_seconds: float = DEFAULT_SETTINGS_VALUES[
         "settings_refresh_interval_seconds"
     ]

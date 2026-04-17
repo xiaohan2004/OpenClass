@@ -104,6 +104,12 @@ export function fetchSessionReports(sessionId) {
   return apiRequest(`/api/sessions/${sessionId}/reports`)
 }
 
+export function generateSessionReport(sessionId) {
+  return apiRequest(`/api/sessions/${sessionId}/reports`, {
+    method: 'POST'
+  })
+}
+
 export function fetchStatsTotals() {
   return apiRequest('/api/stats/totals')
 }

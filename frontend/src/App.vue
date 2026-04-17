@@ -77,10 +77,10 @@
         <section class="sidebar-group">
           <p class="sidebar-title">关键词</p>
           <div class="keyword-list">
-            <span v-for="keyword in keywords" :key="keyword" class="keyword-chip">
+            <span v-for="keyword in latestSessionKeywords" :key="keyword" class="keyword-chip">
               {{ keyword }}
             </span>
-            <p v-if="keywords.length === 0" class="empty-text">暂无关键词</p>
+            <p v-if="latestSessionKeywords.length === 0" class="empty-text">暂无关键词</p>
           </div>
         </section>
 
@@ -97,34 +97,72 @@
       </aside>
 
       <section class="main-stage">
-        <div ref="transcriptFeed" class="transcript-feed glass-panel">
-          <div class="feed-header">
-            <p>课堂转录</p>
-            <span>实时流式更新中</span>
+        <div class="transcript-stage">
+          <div ref="transcriptFeed" class="transcript-feed glass-panel">
+            <div class="feed-header">
+              <p>课堂转录</p>
+              <span>实时流式更新中</span>
+            </div>
+
+            <div class="transcript-list">
+              <article
+                v-for="(item, index) in transcriptItems"
+                :key="item.id"
+                class="transcript-item"
+                :class="[
+                  `kind-${item.kind}`,
+                  {
+                    'is-fresh-1': freshLevel(index) === 1,
+                    'is-fresh-2': freshLevel(index) === 2,
+                    'is-fresh-3': freshLevel(index) === 3
+                  }
+                ]"
+                :style="{ opacity: lineOpacity(index) }"
+              >
+                <span class="transcript-meta">
+                  {{ item.label }} · {{ item.time }}
+                </span>
+                <p>{{ item.text }}</p>
+              </article>
+              <p v-if="transcriptItems.length === 0" class="empty-text">暂无转录数据</p>
+            </div>
           </div>
 
-          <div class="transcript-list">
-            <article
-              v-for="(item, index) in transcriptItems"
-              :key="item.id"
-              class="transcript-item"
-              :class="[
-                `kind-${item.kind}`,
-                {
-                  'is-fresh-1': freshLevel(index) === 1,
-                  'is-fresh-2': freshLevel(index) === 2,
-                  'is-fresh-3': freshLevel(index) === 3
-                }
-              ]"
-              :style="{ opacity: lineOpacity(index) }"
-            >
-              <span class="transcript-meta">
-                {{ item.label }} · {{ item.time }}
-              </span>
-              <p>{{ item.text }}</p>
-            </article>
-            <p v-if="transcriptItems.length === 0" class="empty-text">暂无转录数据</p>
-          </div>
+          <button
+            class="quiz-toggle-button"
+            type="button"
+            :disabled="!selectedSessionId"
+            @click="toggleQuizPanel"
+          >
+            {{ isQuizPanelOpen ? '收起小测' : '展开小测' }}
+          </button>
+
+          <aside class="quiz-drawer glass-panel" :class="{ 'is-open': isQuizPanelOpen }">
+            <div class="quiz-drawer__header">
+              <p>课堂小测</p>
+              <span>{{ quizIndexLabel }}</span>
+            </div>
+
+            <div class="quiz-drawer__body" v-if="currentQuizItem">
+              <p class="quiz-row"><strong>题型：</strong>{{ currentQuizItem.type }}</p>
+              <p class="quiz-row"><strong>题目：</strong>{{ currentQuizItem.question }}</p>
+              <p class="quiz-row" v-if="currentQuizItem.answer">
+                <strong>答案：</strong>{{ currentQuizItem.answer }}
+              </p>
+              <p class="quiz-row" v-if="currentQuizItem.explanation">
+                <strong>解释：</strong>{{ currentQuizItem.explanation }}</p>
+            </div>
+            <p v-else class="empty-text">暂无小测题目</p>
+
+            <div class="quiz-drawer__actions">
+              <button class="ghost-button" type="button" :disabled="!canShowPrevQuiz" @click="showPrevQuiz">
+                上一题
+              </button>
+              <button class="ghost-button" type="button" :disabled="!canShowNextQuiz" @click="showNextQuiz">
+                下一题
+              </button>
+            </div>
+          </aside>
         </div>
 
         <div class="floating-stack">
@@ -146,19 +184,27 @@
             </div>
           </section>
 
-          <section class="ask-status-bar glass-panel">
-            <div class="ask-status-item">
-              <span>提问状态</span>
-              <strong>{{ askingStatusLabel }}</strong>
-            </div>
-            <div class="ask-status-item">
-              <span>当前知识点</span>
-              <strong>{{ currentKnowledgePoint }}</strong>
-            </div>
-            <div class="ask-status-item">
-              <span>难度</span>
-              <strong>{{ currentDifficultyLabel }}</strong>
-            </div>
+          <section class="knowledge-stack">
+            <section
+              class="ask-status-bar glass-panel"
+              :class="{ 'is-expanded': isKnowledgeExpanded }"
+              @click="toggleKnowledgeExpanded"
+            >
+              <div class="knowledge-main-row">
+                <span class="difficulty-tag" :class="`level-${currentDifficultyLevel}`">
+                  {{ currentDifficultyLabel }}
+                </span>
+                <strong>{{ currentKnowledgePoint }}</strong>
+              </div>
+            </section>
+
+            <transition name="knowledge-rise">
+              <section v-if="isKnowledgeExpanded" class="knowledge-overlay glass-panel">
+                <div class="knowledge-extra">
+                  {{ currentKnowledgeDescription }}
+                </div>
+              </section>
+            </transition>
           </section>
 
           <section class="control-bar glass-panel simple-actions">
@@ -355,10 +401,21 @@ const {
   canStartSession,
   canEndSession,
   timerLabel,
-  keywords,
-  askingStatusLabel,
+  latestSessionKeywords,
   currentKnowledgePoint,
+  currentKnowledgeDescription,
+  currentDifficultyLevel,
   currentDifficultyLabel,
+  isKnowledgeExpanded,
+  toggleKnowledgeExpanded,
+  isQuizPanelOpen,
+  toggleQuizPanel,
+  currentQuizItem,
+  quizIndexLabel,
+  canShowPrevQuiz,
+  canShowNextQuiz,
+  showPrevQuiz,
+  showNextQuiz,
   availableMicrophones,
   selectedMicrophoneId,
   micLevelPercent,

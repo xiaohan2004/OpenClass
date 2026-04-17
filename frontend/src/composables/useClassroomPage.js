@@ -3,9 +3,14 @@ import {
   createCourse,
   createSession,
   endSession,
+  generateSessionReport,
   fetchCourses,
+  fetchSessionById,
+  fetchSessionKnowledgePoints,
+  fetchSessionKeywords,
   fetchRelayLogs,
   fetchSessionQuestions,
+  fetchSessionQuizItems,
   fetchSessionsByCourse,
   fetchSessionSummaries,
   fetchSessionTranscripts,
@@ -75,6 +80,12 @@ export function useClassroomPage() {
   const transcriptItems = ref([])
   const summaries = ref([])
   const queuedQuestions = ref([])
+  const keywordSnapshots = ref([])
+  const knowledgePoints = ref([])
+  const quizItems = ref([])
+  const isKnowledgeExpanded = ref(false)
+  const isQuizPanelOpen = ref(false)
+  const currentQuizIndex = ref(-1)
   const stats = ref([])
   const logs = ref([])
   const wsTrafficLogs = ref([])
@@ -171,26 +182,9 @@ export function useClassroomPage() {
     return `${hh}:${mm}:${ss}`
   })
 
-  const keywords = computed(() => {
-    const text = transcriptItems.value.map((item) => item.text).join(' ')
-    if (!text) {
-      return []
-    }
-
-    const words = text
-      .replace(/[，。！？；：、“”‘’（）()\-]/g, ' ')
-      .split(/\s+/)
-      .filter((word) => word.length >= 2)
-
-    const countMap = words.reduce((acc, word) => {
-      const nextValue = (acc[word] || 0) + 1
-      return { ...acc, [word]: nextValue }
-    }, {})
-
-    return Object.entries(countMap)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8)
-      .map(([word]) => word)
+  const latestSessionKeywords = computed(() => {
+    const latest = keywordSnapshots.value[keywordSnapshots.value.length - 1] || null
+    return Array.isArray(latest?.keywords) ? latest.keywords : []
   })
 
   const bufferedChunkCount = computed(() => recordingChunks.value.length)
@@ -208,44 +202,147 @@ export function useClassroomPage() {
 
   const micLevelPercent = computed(() => Math.max(0, Math.min(100, Math.round(micLevel.value * 100))))
 
-  const askingStatusLabel = computed(() => {
-    if (!selectedSessionId.value) {
-      return '未选择课堂'
-    }
+  const latestKnowledgePoint = computed(
+    () => knowledgePoints.value[knowledgePoints.value.length - 1] || null
+  )
 
-    if (sessionStatus.value === 'paused') {
-      return '已暂停'
-    }
+  const currentKnowledgePoint = computed(
+    () => latestKnowledgePoint.value?.name || '暂无知识点'
+  )
 
-    if (sessionStatus.value !== 'recording') {
-      return '待机'
-    }
+  const currentKnowledgeDescription = computed(
+    () => latestKnowledgePoint.value?.description || '暂无简要说明'
+  )
 
-    const queueCount = queuedQuestions.value.length
-    if (queueCount > 0) {
-      return `待提问（${queueCount}）`
+  const currentDifficultyLevel = computed(() => {
+    const rawDifficulty = String(latestKnowledgePoint.value?.difficulty || '').trim().toLowerCase()
+    if (!rawDifficulty) {
+      return 'medium'
     }
-    return '提问中'
+    if (rawDifficulty.includes('hard') || rawDifficulty.includes('难')) {
+      return 'hard'
+    }
+    if (rawDifficulty.includes('easy') || rawDifficulty.includes('易')) {
+      return 'easy'
+    }
+    return 'medium'
   })
-
-  const currentKnowledgePoint = computed(() => keywords.value[0] || '暂无')
 
   const currentDifficultyLabel = computed(() => {
-    const latestQuestion = queuedQuestions.value[queuedQuestions.value.length - 1] || null
-    const rawScore = Number(latestQuestion?.score)
-    if (!Number.isFinite(rawScore)) {
-      return '待判定'
+    if (currentDifficultyLevel.value === 'hard') {
+      return '难'
+    }
+    if (currentDifficultyLevel.value === 'easy') {
+      return '易'
+    }
+    return '中'
+  })
+
+  const currentQuizItem = computed(() => {
+    if (currentQuizIndex.value < 0 || currentQuizIndex.value >= quizItems.value.length) {
+      return null
+    }
+    return quizItems.value[currentQuizIndex.value]
+  })
+
+  const quizIndexLabel = computed(() => {
+    if (quizItems.value.length === 0 || currentQuizIndex.value < 0) {
+      return '0/0'
+    }
+    return `${currentQuizIndex.value + 1}/${quizItems.value.length}`
+  })
+
+  const canShowPrevQuiz = computed(() => currentQuizIndex.value > 0)
+  const canShowNextQuiz = computed(
+    () => currentQuizIndex.value >= 0 && currentQuizIndex.value < quizItems.value.length - 1
+  )
+
+  function parseKeywordSet(rawKeywordSets) {
+    if (!rawKeywordSets) {
+      return []
     }
 
-    const normalizedScore = rawScore <= 1 ? rawScore * 100 : rawScore
-    if (normalizedScore >= 70) {
-      return '较高'
+    if (Array.isArray(rawKeywordSets)) {
+      return rawKeywordSets.map((item) => String(item).trim()).filter(Boolean)
     }
-    if (normalizedScore >= 40) {
-      return '中等'
+
+    if (typeof rawKeywordSets === 'string') {
+      try {
+        const parsed = JSON.parse(rawKeywordSets)
+        if (Array.isArray(parsed)) {
+          return parsed.map((item) => String(item).trim()).filter(Boolean)
+        }
+      } catch {
+        return rawKeywordSets
+          .split(/[、,，\s]+/)
+          .map((item) => item.trim())
+          .filter(Boolean)
+      }
     }
-    return '较低'
-  })
+
+    return []
+  }
+
+  function normalizeKnowledgePoint(item) {
+    if (!item || typeof item !== 'object') {
+      return null
+    }
+
+    const name = String(item.name || '').trim()
+    if (!name) {
+      return null
+    }
+
+    return {
+      id: item.id ?? createTransientId('knowledge'),
+      name,
+      description: String(item.description || '').trim(),
+      difficulty: String(item.difficulty || '').trim().toLowerCase(),
+      createdAt: toUnixSeconds(item.created_at || item.start_time || Date.now())
+    }
+  }
+
+  function normalizeQuizItem(item) {
+    if (!item || typeof item !== 'object') {
+      return null
+    }
+
+    const question = String(item.question || '').trim()
+    if (!question) {
+      return null
+    }
+
+    return {
+      id: item.id ?? createTransientId('quiz'),
+      type: String(item.type || '').trim() || 'short_answer',
+      question,
+      answer: String(item.answer || '').trim(),
+      explanation: String(item.explanation || '').trim(),
+      createdAt: toUnixSeconds(item.created_at || item.start_time || Date.now())
+    }
+  }
+
+  function toggleKnowledgeExpanded() {
+    isKnowledgeExpanded.value = !isKnowledgeExpanded.value
+  }
+
+  function toggleQuizPanel() {
+    isQuizPanelOpen.value = !isQuizPanelOpen.value
+  }
+
+  function showPrevQuiz() {
+    if (!canShowPrevQuiz.value) {
+      return
+    }
+    currentQuizIndex.value -= 1
+  }
+
+  function showNextQuiz() {
+    if (!canShowNextQuiz.value) {
+      return
+    }
+    currentQuizIndex.value += 1
+  }
 
   function toUnixSeconds(ts) {
     if (typeof ts === 'number' && Number.isFinite(ts)) {
@@ -637,6 +734,39 @@ export function useClassroomPage() {
       }
     }
 
+    if (type === 'keywords') {
+      const incomingKeywords = Array.isArray(data?.keywords)
+        ? data.keywords.map((item) => String(item).trim()).filter(Boolean)
+        : []
+
+      if (incomingKeywords.length > 0) {
+        keywordSnapshots.value = [
+          ...keywordSnapshots.value,
+          {
+            id: createTransientId('keyword-set'),
+            createdAt: now,
+            keywords: incomingKeywords
+          }
+        ]
+      }
+    }
+
+    if (type === 'knowledge') {
+      const nextKnowledgePoint = normalizeKnowledgePoint(data)
+      if (nextKnowledgePoint) {
+        knowledgePoints.value = [...knowledgePoints.value, nextKnowledgePoint]
+      }
+    }
+
+    if (type === 'quiz') {
+      const nextQuizItem = normalizeQuizItem(data)
+      if (nextQuizItem) {
+        const mergedQuizItems = [...quizItems.value, nextQuizItem]
+        quizItems.value = mergedQuizItems
+        currentQuizIndex.value = mergedQuizItems.length - 1
+      }
+    }
+
     if (type === 'tts_out') {
       if (data?.audio_url) {
         const audio = new Audio(data.audio_url)
@@ -960,6 +1090,12 @@ export function useClassroomPage() {
       transcriptItems.value = []
       summaries.value = []
       queuedQuestions.value = []
+      keywordSnapshots.value = []
+      knowledgePoints.value = []
+      quizItems.value = []
+      currentQuizIndex.value = -1
+      isKnowledgeExpanded.value = false
+      isQuizPanelOpen.value = false
       stats.value = []
       logs.value = []
       isRunning.value = false
@@ -969,10 +1105,14 @@ export function useClassroomPage() {
 
     const currentRuntime = getSessionRuntime(sessionId)
 
-    const [transcriptsData, summariesData, questionsData, statsData, relayLogsData] = await Promise.all([
+    const [sessionData, transcriptsData, summariesData, questionsData, keywordsData, knowledgeData, quizData, statsData, relayLogsData] = await Promise.all([
+      fetchSessionById(sessionId),
       fetchSessionTranscripts(sessionId),
       fetchSessionSummaries(sessionId),
       fetchSessionQuestions(sessionId),
+      fetchSessionKeywords(sessionId),
+      fetchSessionKnowledgePoints(sessionId),
+      fetchSessionQuizItems(sessionId),
       fetchStatsTotals(),
       fetchRelayLogs()
     ])
@@ -1013,6 +1153,52 @@ export function useClassroomPage() {
         score: item.score
       }))
 
+    const keywordList = Array.isArray(keywordsData) ? keywordsData : []
+    const sortedKeywordList = [...keywordList].sort((a, b) => {
+      const tsA = toUnixSeconds(a?.created_at) || 0
+      const tsB = toUnixSeconds(b?.created_at) || 0
+      if (tsA !== tsB) {
+        return tsA - tsB
+      }
+      return Number(a?.id || 0) - Number(b?.id || 0)
+    })
+    keywordSnapshots.value = sortedKeywordList
+      .map((item) => ({
+        id: item.id,
+        createdAt: toUnixSeconds(item.created_at),
+        keywords: parseKeywordSet(item.keyword_sets)
+      }))
+      .filter((item) => item.keywords.length > 0)
+
+    const knowledgeList = Array.isArray(knowledgeData) ? knowledgeData : []
+    const sortedKnowledgeList = [...knowledgeList].sort((a, b) => {
+      const tsA = toUnixSeconds(a?.created_at) || 0
+      const tsB = toUnixSeconds(b?.created_at) || 0
+      if (tsA !== tsB) {
+        return tsA - tsB
+      }
+      return Number(a?.id || 0) - Number(b?.id || 0)
+    })
+    knowledgePoints.value = sortedKnowledgeList
+      .map((item) => normalizeKnowledgePoint(item))
+      .filter(Boolean)
+    isKnowledgeExpanded.value = false
+
+    const quizList = Array.isArray(quizData) ? quizData : []
+    const sortedQuizList = [...quizList].sort((a, b) => {
+      const tsA = toUnixSeconds(a?.created_at) || 0
+      const tsB = toUnixSeconds(b?.created_at) || 0
+      if (tsA !== tsB) {
+        return tsA - tsB
+      }
+      return Number(a?.id || 0) - Number(b?.id || 0)
+    })
+    quizItems.value = sortedQuizList
+      .map((item) => normalizeQuizItem(item))
+      .filter(Boolean)
+    currentQuizIndex.value = quizItems.value.length > 0 ? quizItems.value.length - 1 : -1
+    isQuizPanelOpen.value = false
+
     const totalList = Array.isArray(statsData) ? statsData : []
     stats.value = totalList.map((item) => ({
       label: `${item.service_type.toUpperCase()} 成功`,
@@ -1025,7 +1211,7 @@ export function useClassroomPage() {
       .reverse()
       .map((item) => `${formatTime(item.time)} ${item.service_type.toUpperCase()} ${item.status || 'unknown'}`)
 
-    const latestSession = sessions.value.find((item) => item.id === sessionId)
+    const latestSession = sessionData || sessions.value.find((item) => item.id === sessionId)
     const hasStarted = Boolean(latestSession?.start_time && !latestSession?.end_time)
 
     if (currentRuntime.status === 'paused') {
@@ -1215,6 +1401,16 @@ export function useClassroomPage() {
     try {
       const buttonClickTs = Math.floor(Date.now() / 1000)
       await endSession(selectedSessionId.value, buttonClickTs)
+
+      // try {
+      //   await generateSessionReport(selectedSessionId.value)
+      //   appendLog(`${formatTime(Math.floor(Date.now() / 1000))} 已触发课后报告生成`) 
+      // } catch (reportError) {
+      //   appendLog(
+      //     `${formatTime(Math.floor(Date.now() / 1000))} 课后报告触发失败：${reportError instanceof Error ? reportError.message : '未知错误'}`
+      //   )
+      // }
+
       await stopRecordingLoop()
       scheduleWsClose()
       isRunning.value = false
@@ -1329,10 +1525,21 @@ export function useClassroomPage() {
     canStartSession,
     canEndSession,
     timerLabel,
-    keywords,
-    askingStatusLabel,
+    latestSessionKeywords,
     currentKnowledgePoint,
+    currentKnowledgeDescription,
+    currentDifficultyLevel,
     currentDifficultyLabel,
+    isKnowledgeExpanded,
+    toggleKnowledgeExpanded,
+    isQuizPanelOpen,
+    toggleQuizPanel,
+    currentQuizItem,
+    quizIndexLabel,
+    canShowPrevQuiz,
+    canShowNextQuiz,
+    showPrevQuiz,
+    showNextQuiz,
     availableMicrophones,
     selectedMicrophoneId,
     micLevelPercent,

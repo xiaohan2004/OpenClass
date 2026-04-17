@@ -46,8 +46,8 @@ def get_llm_client() -> OpenAI:
 
 
 def generate_with_prompt(
-    *,
     context: str,
+    *,
     system_prompt: str,
 ) -> str:
     """按给定系统提示词调用 LLM 并记录服务统计。"""

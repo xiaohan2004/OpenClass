@@ -1,18 +1,26 @@
 """课堂主流程"""
 
 import asyncio
+import json
 import logging
 import random
 import time
 
 from sqlmodel import Session
 
+from app.config import get_settings
 from app.db import get_engine
 from app.db.crud import (
+    create_keyword,
+    create_knowledge_point,
     create_question,
+    create_quiz_item,
     create_segment_summary,
     create_transcript,
+    link_keyword_to_transcript,
+    link_knowledge_point_to_transcript,
     link_question_to_transcript,
+    link_quiz_item_to_transcript,
     link_segment_summary_to_transcript,
     list_transcripts_by_session,
     mark_question_asked,
@@ -22,11 +30,20 @@ from app.services.asr import get_asr_service
 from app.services.tts import get_tts_service
 from .classcontext import ClassContext
 from .question import QuestionProcessor
+from .keyword import KeywordProcessor
+from .knowledge import KnowledgeProcessor
+from .quiz import QuizProcessor
 
 logger = logging.getLogger(__name__)
 
 
 question_processor = QuestionProcessor()  # 提问处理器实例
+keyword_processor = KeywordProcessor()  # 关键词处理器实例
+knowledge_processor = KnowledgeProcessor()  # 知识点处理器实例
+quiz_processor = QuizProcessor()  # 小测处理器实例
+
+# 计数器，用于控制关键词/知识点/小测处理的触发间隔
+_handle_audio_call_count = 0
 
 
 class _ServiceProxy:
@@ -51,6 +68,8 @@ async def handle_audio(
     transcript_end_time: int | None = None,
 ):
     """处理一次音频输入（单步主流程）"""
+    global _handle_audio_call_count
+    _handle_audio_call_count += 1
 
     # ASR
     text = await asyncio.to_thread(asr.transcribe, audio_bytes)
@@ -120,15 +139,21 @@ async def handle_audio(
 
 def start_background_tasks(context: ClassContext, safe_ws: SafeWebSocket) -> None:
     """启动后台任务。"""
-    task = asyncio.create_task(_background_tasks_processing(context, safe_ws))
+    task = asyncio.create_task(
+        _background_tasks_processing(context, safe_ws, _handle_audio_call_count)
+    )
     task.add_done_callback(_handle_task_result)
 
 
 async def _background_tasks_processing(
     context: ClassContext,
     safe_ws: SafeWebSocket,
+    call_count: int,
 ) -> None:
     """执行后台任务。"""
+    settings = get_settings()
+    trigger_interval = getattr(settings, "keyword_knowledge_quiz_trigger_interval", 24)
+
     summary_text, questions = await asyncio.gather(
         asyncio.to_thread(context.generate_summary_if_needed),
         asyncio.to_thread(
@@ -195,6 +220,75 @@ async def _background_tasks_processing(
                 },
             }
         )
+
+    # 定时处理关键词、知识点、小测（每 trigger_interval 次调用触发一次）
+    if call_count % trigger_interval == 0:
+        context_text = context.get_latest_lecture_texts()
+        if context_text:
+            # 获取用于关联的转写 ID
+            transcript_ids = context.get_recent_transcript_ids_for_questions()
+
+            # 并行执行关键词、知识点、小测处理
+            keywords_result, knowledge_result, quiz_result = await asyncio.gather(
+                asyncio.to_thread(keyword_processor.extract_keywords_llm, context_text),
+                asyncio.to_thread(
+                    knowledge_processor.generate_knowledge_point, context_text
+                ),
+                asyncio.to_thread(quiz_processor.generate_quiz_item, context_text),
+                return_exceptions=True,
+            )
+
+            # 发送结果到前端
+            if keywords_result and not isinstance(keywords_result, Exception):
+                await safe_ws.send_json(
+                    {
+                        "type": "keywords",
+                        "data": {"keywords": keywords_result},
+                    }
+                )
+
+                # 持久化关键词
+                if context.session_id is not None:
+                    await asyncio.to_thread(
+                        _persist_keywords,
+                        context.session_id,
+                        keywords_result,
+                        transcript_ids,
+                    )
+
+            if knowledge_result and not isinstance(knowledge_result, Exception):
+                await safe_ws.send_json(
+                    {
+                        "type": "knowledge",
+                        "data": knowledge_result,
+                    }
+                )
+
+                # 持久化知识点
+                if context.session_id is not None:
+                    await asyncio.to_thread(
+                        _persist_knowledge_point,
+                        context.session_id,
+                        knowledge_result,
+                        transcript_ids,
+                    )
+
+            if quiz_result and not isinstance(quiz_result, Exception):
+                await safe_ws.send_json(
+                    {
+                        "type": "quiz",
+                        "data": quiz_result,
+                    }
+                )
+
+                # 持久化小测题目
+                if context.session_id is not None:
+                    await asyncio.to_thread(
+                        _persist_quiz_item,
+                        context.session_id,
+                        quiz_result,
+                        transcript_ids,
+                    )
 
 
 def _handle_task_result(task: asyncio.Task) -> None:
@@ -268,3 +362,68 @@ def _mark_question_asked(question_id: int) -> None:
     """将问题状态更新为已提问。"""
     with Session(get_engine()) as db:
         mark_question_asked(db, question_id)
+
+
+def _persist_keywords(
+    session_id: int,
+    keywords: list[str],
+    transcript_ids: list[int],
+) -> int:
+    """将关键词集合及其映射写入数据库。"""
+    with Session(get_engine()) as db:
+        # 将关键词列表序列化为 JSON 字符串存储
+        keyword_sets_json = json.dumps(keywords, ensure_ascii=False)
+        keyword = create_keyword(
+            db, session_id=session_id, keyword_sets=keyword_sets_json
+        )
+
+        # 建立与转写的映射
+        for transcript_id in transcript_ids:
+            link_keyword_to_transcript(db, keyword.id, transcript_id)
+
+        return keyword.id
+
+
+def _persist_knowledge_point(
+    session_id: int,
+    knowledge_info: dict,
+    transcript_ids: list[int],
+) -> int:
+    """将知识点及其映射写入数据库。"""
+    with Session(get_engine()) as db:
+        knowledge_point = create_knowledge_point(
+            db,
+            session_id=session_id,
+            name=knowledge_info.get("name", ""),
+            description=knowledge_info.get("description"),
+            difficulty=knowledge_info.get("difficulty"),
+        )
+
+        # 建立与转写的映射
+        for transcript_id in transcript_ids:
+            link_knowledge_point_to_transcript(db, knowledge_point.id, transcript_id)
+
+        return knowledge_point.id
+
+
+def _persist_quiz_item(
+    session_id: int,
+    quiz_info: dict,
+    transcript_ids: list[int],
+) -> int:
+    """将小测题目及其映射写入数据库。"""
+    with Session(get_engine()) as db:
+        quiz_item = create_quiz_item(
+            db,
+            session_id=session_id,
+            question=quiz_info.get("question", ""),
+            item_type=quiz_info.get("type"),
+            answer=quiz_info.get("answer"),
+            explanation=quiz_info.get("explanation"),
+        )
+
+        # 建立与转写的映射
+        for transcript_id in transcript_ids:
+            link_quiz_item_to_transcript(db, quiz_item.id, transcript_id)
+
+        return quiz_item.id
