@@ -118,6 +118,108 @@ class SegmentSummaryTranscriptMap(SQLModel, table=True):
     transcript_id: int = Field(foreign_key="transcripts.id", nullable=False)
 
 
+class Keyword(SQLModel, table=True):
+    """课堂关键词集合。"""
+
+    __tablename__ = "keywords"
+    __table_args__ = (Index("idx_keywords_session", "session_id"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: int = Field(foreign_key="sessions.id", nullable=False)
+    keyword_sets: str = Field(nullable=False)
+    created_at: int = Field(default_factory=now_ts, nullable=False)
+
+
+class KeywordTranscriptMap(SQLModel, table=True):
+    """关键词与转写上下文映射。"""
+
+    __tablename__ = "keyword_transcript_map"
+    __table_args__ = (
+        Index("idx_kt_keyword", "keyword_id"),
+        Index("idx_kt_transcript", "transcript_id"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    keyword_id: int = Field(foreign_key="keywords.id", nullable=False)
+    transcript_id: int = Field(foreign_key="transcripts.id", nullable=False)
+
+
+class QuizItem(SQLModel, table=True):
+    """课堂小测题目。"""
+
+    __tablename__ = "quiz_items"
+    __table_args__ = (
+        Index("idx_quiz_session", "session_id"),
+        Index("idx_quiz_type", "type"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: int = Field(foreign_key="sessions.id", nullable=False)
+    type: Optional[str] = Field(default=None)
+    question: str = Field(nullable=False)
+    answer: Optional[str] = Field(default=None)
+    explanation: Optional[str] = Field(default=None)
+    created_at: int = Field(default_factory=now_ts, nullable=False)
+
+
+class QuizItemTranscriptMap(SQLModel, table=True):
+    """小测题目与转写上下文映射。"""
+
+    __tablename__ = "quiz_item_transcript_map"
+    __table_args__ = (
+        Index("idx_qitm_quiz", "quiz_item_id"),
+        Index("idx_qitm_transcript", "transcript_id"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    quiz_item_id: int = Field(foreign_key="quiz_items.id", nullable=False)
+    transcript_id: int = Field(foreign_key="transcripts.id", nullable=False)
+
+
+class KnowledgePoint(SQLModel, table=True):
+    """课堂知识点。"""
+
+    __tablename__ = "knowledge_points"
+    __table_args__ = (
+        Index("idx_kp_name", "name"),
+        Index("idx_kp_session", "session_id"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: int = Field(foreign_key="sessions.id", nullable=False)
+    name: str = Field(nullable=False)
+    description: Optional[str] = Field(default=None)
+    difficulty: Optional[str] = Field(default=None)
+    created_at: int = Field(default_factory=now_ts, nullable=False)
+
+
+class KnowledgePointTranscriptMap(SQLModel, table=True):
+    """知识点与转写上下文映射。"""
+
+    __tablename__ = "knowledge_point_transcript_map"
+    __table_args__ = (
+        Index("idx_kpt_kp", "knowledge_point_id"),
+        Index("idx_kpt_transcript", "transcript_id"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    knowledge_point_id: int = Field(foreign_key="knowledge_points.id", nullable=False)
+    transcript_id: int = Field(foreign_key="transcripts.id", nullable=False)
+
+
+class Report(SQLModel, table=True):
+    """课后报告。"""
+
+    __tablename__ = "reports"
+    __table_args__ = (Index("idx_reports_session", "session_id"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: int = Field(foreign_key="sessions.id", nullable=False)
+    content: Optional[str] = Field(default=None)
+    file_path: Optional[str] = Field(default=None)
+    created_at: int = Field(default_factory=now_ts, nullable=False)
+
+
 class LLMInfo(SQLModel, table=True):
     """LLM 模型价格信息。"""
 

@@ -18,11 +18,18 @@ sys.path.insert(0, str(PROJECT_ROOT))
 import app.config as app_config
 import app.db.session as db_session_module
 from app.db import (
+    Keyword,
+    KeywordTranscriptMap,
+    KnowledgePoint,
+    KnowledgePointTranscriptMap,
     LLMInfo,
     MigrationRecord,
     Question,
     QuestionTranscriptMap,
+    QuizItem,
+    QuizItemTranscriptMap,
     RelayLog,
+    Report,
     SegmentSummary,
     SegmentSummaryTranscriptMap,
     SessionRecord,
@@ -35,21 +42,32 @@ from app.db import (
 )
 from app.db.crud import (
     create_course,
+    create_keyword,
+    create_knowledge_point,
     create_llm_info,
     create_migration_record,
     create_question,
+    create_quiz_item,
     create_relay_log,
+    create_report,
     create_segment_summary,
     create_session,
     create_stats_hourly,
     create_stats_total,
     create_transcript,
     delete_course,
+    delete_keyword,
+    delete_keyword_transcript_map,
+    delete_knowledge_point,
+    delete_knowledge_point_transcript_map,
     delete_llm_info,
     delete_migration_record,
     delete_question,
     delete_question_transcript_map,
+    delete_quiz_item,
+    delete_quiz_item_transcript_map,
     delete_relay_log,
+    delete_report,
     delete_segment_summary,
     delete_segment_summary_transcript_map,
     delete_session,
@@ -59,11 +77,18 @@ from app.db.crud import (
     delete_stats_total,
     delete_transcript,
     get_course_by_id,
+    get_keyword_by_id,
+    get_keyword_transcript_map_by_id,
+    get_knowledge_point_by_id,
+    get_knowledge_point_transcript_map_by_id,
     get_llm_info_by_name,
     get_migration_record_by_version,
     get_question_by_id,
     get_question_transcript_map_by_id,
+    get_quiz_item_by_id,
+    get_quiz_item_transcript_map_by_id,
     get_relay_log_by_id,
+    get_report_by_id,
     get_segment_summary_by_id,
     get_segment_summary_transcript_map_by_id,
     get_session_by_id,
@@ -73,15 +98,29 @@ from app.db.crud import (
     get_stats_total_by_id,
     get_stats_total_by_service_type,
     get_transcript_by_id,
+    link_keyword_to_transcript,
+    link_knowledge_point_to_transcript,
     link_question_to_transcript,
+    link_quiz_item_to_transcript,
     link_segment_summary_to_transcript,
     list_courses,
+    list_keyword_transcript_maps,
+    list_keywords,
+    list_keywords_by_session,
+    list_knowledge_point_transcript_maps,
+    list_knowledge_points,
+    list_knowledge_points_by_session,
     list_llm_infos,
     list_migration_records,
     list_question_transcript_maps,
     list_questions,
     list_questions_by_session,
+    list_quiz_item_transcript_maps,
+    list_quiz_items,
+    list_quiz_items_by_session,
     list_relay_logs,
+    list_reports,
+    list_reports_by_session,
     list_segment_summaries,
     list_segment_summaries_by_session,
     list_segment_summary_transcript_maps,
@@ -95,12 +134,16 @@ from app.db.crud import (
     update_course,
     update_migration_record,
     update_question,
+    update_quiz_item,
     update_relay_log,
+    update_report,
     update_segment_summary,
     update_session,
     update_stats_hourly,
     update_stats_total,
     update_transcript,
+    update_keyword,
+    update_knowledge_point,
     upsert_setting,
     upsert_stats_daily,
     upsert_stats_hourly,
@@ -165,6 +208,29 @@ class TestDatabase(unittest.TestCase):
             summary_map = link_segment_summary_to_transcript(
                 db, summary.id, transcript.id
             )
+            keyword = create_keyword(db, session.id, '["极限", "导数"]')
+            keyword_map = link_keyword_to_transcript(db, keyword.id, transcript.id)
+            quiz_item = create_quiz_item(
+                db,
+                session.id,
+                "函数极限的定义是什么？",
+                item_type="short_answer",
+            )
+            quiz_item_map = link_quiz_item_to_transcript(
+                db, quiz_item.id, transcript.id
+            )
+            knowledge_point = create_knowledge_point(
+                db,
+                session.id,
+                "函数极限",
+                difficulty="medium",
+            )
+            knowledge_point_map = link_knowledge_point_to_transcript(
+                db,
+                knowledge_point.id,
+                transcript.id,
+            )
+            report = create_report(db, session.id, content="课堂报告草稿")
 
             llm_info = create_llm_info(
                 db, "deepseek-chat", input_price=0.1, output_price=0.2
@@ -212,6 +278,13 @@ class TestDatabase(unittest.TestCase):
             self.assertIsNotNone(question_map.id)
             self.assertIsNotNone(summary.id)
             self.assertIsNotNone(summary_map.id)
+            self.assertIsNotNone(keyword.id)
+            self.assertIsNotNone(keyword_map.id)
+            self.assertIsNotNone(quiz_item.id)
+            self.assertIsNotNone(quiz_item_map.id)
+            self.assertIsNotNone(knowledge_point.id)
+            self.assertIsNotNone(knowledge_point_map.id)
+            self.assertIsNotNone(report.id)
             self.assertEqual(llm_info.name, "deepseek-chat")
             self.assertIsNotNone(relay_log.id)
             self.assertIsNotNone(stats_total.id)
@@ -227,6 +300,10 @@ class TestDatabase(unittest.TestCase):
             self.assertEqual(len(list_transcripts_by_session(db, session.id)), 1)
             self.assertEqual(len(list_questions_by_session(db, session.id)), 1)
             self.assertEqual(len(list_segment_summaries_by_session(db, session.id)), 1)
+            self.assertEqual(len(list_keywords_by_session(db, session.id)), 1)
+            self.assertEqual(len(list_quiz_items_by_session(db, session.id)), 1)
+            self.assertEqual(len(list_knowledge_points_by_session(db, session.id)), 1)
+            self.assertEqual(len(list_reports_by_session(db, session.id)), 1)
             self.assertEqual(len(list_relay_logs(db)), 1)
             self.assertEqual(get_setting(db, "app.mode").value, "dev")
 
@@ -314,6 +391,106 @@ class TestDatabase(unittest.TestCase):
                 1,
             )
 
+            keyword = create_keyword(db, session.id, '["极限", "连续"]')
+            self.assertEqual(get_keyword_by_id(db, keyword.id).session_id, session.id)
+            updated_keyword = update_keyword(
+                db, keyword.id, keyword_sets='["导数", "微分"]'
+            )
+            self.assertIn("导数", updated_keyword.keyword_sets)
+            self.assertEqual(len(list_keywords(db)), 1)
+            self.assertEqual(len(list_keywords_by_session(db, session.id)), 1)
+
+            keyword_map = link_keyword_to_transcript(db, keyword.id, transcript.id)
+            self.assertEqual(
+                get_keyword_transcript_map_by_id(db, keyword_map.id).keyword_id,
+                keyword.id,
+            )
+            self.assertEqual(
+                len(list_keyword_transcript_maps(db, keyword_id=keyword.id)),
+                1,
+            )
+
+            quiz_item = create_quiz_item(
+                db,
+                session.id,
+                "函数连续的判定条件是什么？",
+                item_type="short_answer",
+            )
+            self.assertEqual(
+                get_quiz_item_by_id(db, quiz_item.id).question,
+                "函数连续的判定条件是什么？",
+            )
+            updated_quiz_item = update_quiz_item(
+                db,
+                quiz_item.id,
+                answer="左右极限存在且相等并等于函数值",
+                explanation="连续的三要素",
+            )
+            self.assertEqual(updated_quiz_item.type, "short_answer")
+            self.assertEqual(len(list_quiz_items(db)), 1)
+            self.assertEqual(len(list_quiz_items_by_session(db, session.id)), 1)
+
+            quiz_item_map = link_quiz_item_to_transcript(
+                db, quiz_item.id, transcript.id
+            )
+            self.assertEqual(
+                get_quiz_item_transcript_map_by_id(db, quiz_item_map.id).quiz_item_id,
+                quiz_item.id,
+            )
+            self.assertEqual(
+                len(list_quiz_item_transcript_maps(db, quiz_item_id=quiz_item.id)),
+                1,
+            )
+
+            knowledge_point = create_knowledge_point(
+                db,
+                session.id,
+                "函数连续",
+                description="函数在某点连续的定义",
+                difficulty="easy",
+            )
+            self.assertEqual(
+                get_knowledge_point_by_id(db, knowledge_point.id).name,
+                "函数连续",
+            )
+            updated_knowledge_point = update_knowledge_point(
+                db, knowledge_point.id, difficulty="medium"
+            )
+            self.assertEqual(updated_knowledge_point.difficulty, "medium")
+            self.assertEqual(len(list_knowledge_points(db)), 1)
+            self.assertEqual(len(list_knowledge_points_by_session(db, session.id)), 1)
+
+            knowledge_point_map = link_knowledge_point_to_transcript(
+                db, knowledge_point.id, transcript.id
+            )
+            self.assertEqual(
+                get_knowledge_point_transcript_map_by_id(
+                    db, knowledge_point_map.id
+                ).knowledge_point_id,
+                knowledge_point.id,
+            )
+            self.assertEqual(
+                len(
+                    list_knowledge_point_transcript_maps(
+                        db,
+                        knowledge_point_id=knowledge_point.id,
+                    )
+                ),
+                1,
+            )
+
+            report = create_report(
+                db,
+                session.id,
+                content="课堂总结报告",
+                file_path="/tmp/report.pdf",
+            )
+            self.assertEqual(get_report_by_id(db, report.id).session_id, session.id)
+            updated_report = update_report(db, report.id, content="课堂总结报告-更新")
+            self.assertIn("更新", updated_report.content)
+            self.assertEqual(len(list_reports(db)), 1)
+            self.assertEqual(len(list_reports_by_session(db, session.id)), 1)
+
             llm_info = create_llm_info(db, "model-a", input_price=1.0)
             self.assertEqual(get_llm_info_by_name(db, "model-a").input, 1.0)
             create_llm_info(db, "model-a", input_price=2.0, output_price=3.0)
@@ -354,9 +531,7 @@ class TestDatabase(unittest.TestCase):
             )
             self.assertEqual(len(list_stats_dailies(db)), 1)
 
-            stats_hourly = create_stats_hourly(
-                db, "2026-04-02", 9, "llm", input_value=7
-            )
+            create_stats_hourly(db, "2026-04-02", 9, "llm", input_value=7)
             self.assertEqual(
                 get_stats_hourly_by_hour(db, "2026-04-02", 9, "llm").input_value, 7
             )
@@ -393,11 +568,34 @@ class TestDatabase(unittest.TestCase):
             self.assertTrue(delete_segment_summary_transcript_map(db, summary_map.id))
             self.assertEqual(len(list_segment_summary_transcript_maps(db)), 0)
 
+            self.assertTrue(delete_keyword_transcript_map(db, keyword_map.id))
+            self.assertEqual(len(list_keyword_transcript_maps(db)), 0)
+
+            self.assertTrue(delete_quiz_item_transcript_map(db, quiz_item_map.id))
+            self.assertEqual(len(list_quiz_item_transcript_maps(db)), 0)
+
+            self.assertTrue(
+                delete_knowledge_point_transcript_map(db, knowledge_point_map.id)
+            )
+            self.assertEqual(len(list_knowledge_point_transcript_maps(db)), 0)
+
             self.assertTrue(delete_question(db, question.id))
             self.assertEqual(len(list_questions(db)), 0)
 
             self.assertTrue(delete_segment_summary(db, summary.id))
             self.assertEqual(len(list_segment_summaries(db)), 0)
+
+            self.assertTrue(delete_keyword(db, keyword.id))
+            self.assertEqual(len(list_keywords(db)), 0)
+
+            self.assertTrue(delete_quiz_item(db, quiz_item.id))
+            self.assertEqual(len(list_quiz_items(db)), 0)
+
+            self.assertTrue(delete_knowledge_point(db, knowledge_point.id))
+            self.assertEqual(len(list_knowledge_points(db)), 0)
+
+            self.assertTrue(delete_report(db, report.id))
+            self.assertEqual(len(list_reports(db)), 0)
 
             self.assertTrue(delete_transcript(db, transcript.id))
             self.assertEqual(len(list_transcripts_by_session(db, session.id)), 0)
@@ -450,6 +648,13 @@ class TestDatabase(unittest.TestCase):
             QuestionTranscriptMap.__tablename__,
             SegmentSummary.__tablename__,
             SegmentSummaryTranscriptMap.__tablename__,
+            Keyword.__tablename__,
+            KeywordTranscriptMap.__tablename__,
+            QuizItem.__tablename__,
+            QuizItemTranscriptMap.__tablename__,
+            KnowledgePoint.__tablename__,
+            KnowledgePointTranscriptMap.__tablename__,
+            Report.__tablename__,
             LLMInfo.__tablename__,
             RelayLog.__tablename__,
             StatsTotal.__tablename__,

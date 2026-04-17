@@ -59,7 +59,6 @@ CREATE TABLE courses (
     created_at INTEGER,
 );
 
-
 -- =========================
 -- sessions（课堂）
 -- =========================
@@ -96,7 +95,6 @@ CREATE TABLE transcripts (
 CREATE INDEX idx_transcripts_session ON transcripts(session_id);
 CREATE INDEX idx_transcripts_time ON transcripts(session_id, start_time);
 
-
 -- =========================
 -- questions（问题）
 -- =========================
@@ -117,7 +115,6 @@ CREATE TABLE questions (
 CREATE INDEX idx_questions_session ON questions(session_id);
 CREATE INDEX idx_questions_status ON questions(status);
 
-
 -- =========================
 -- question_transcript_map（问题-上下文映射）
 -- =========================
@@ -131,7 +128,6 @@ CREATE TABLE question_transcript_map (
 );
 CREATE INDEX idx_qt_question ON question_transcript_map(question_id);
 CREATE INDEX idx_qt_transcript ON question_transcript_map(transcript_id);
-
 
 -- =========================
 -- segment_summaries（分段小结）
@@ -153,7 +149,6 @@ CREATE TABLE segment_summaries (
 CREATE INDEX idx_seg_sum_session ON segment_summaries(session_id);
 CREATE INDEX idx_seg_sum_time ON segment_summaries(session_id, start_time);
 
-
 -- =========================
 -- segment_summary_transcript_map（小结-转写映射）
 -- =========================
@@ -169,6 +164,115 @@ CREATE TABLE segment_summary_transcript_map (
 CREATE INDEX idx_seg_sum_map_summary ON segment_summary_transcript_map(segment_summary_id);
 CREATE INDEX idx_seg_sum_map_transcript ON segment_summary_transcript_map(transcript_id);
 
+-- =========================
+-- keywords（关键词）
+-- =========================
+CREATE TABLE keywords (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+session_id INTEGER NOT NULL,
+
+keyword_sets TEXT NOT NULL,  -- 关键词集合（JSON格式，一组关键词）
+
+created_at INTEGER
+
+FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+CREATE INDEX idx_keywords_session ON keywords(session_id);
+
+-- =========================
+-- keyword_transcript_map（关键词-上下文映射）
+-- =========================
+CREATE TABLE keyword_transcript_map (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    keyword_id INTEGER NOT NULL,
+    transcript_id INTEGER NOT NULL,
+
+    FOREIGN KEY (keyword_id) REFERENCES keywords(id),
+    FOREIGN KEY (transcript_id) REFERENCES transcripts(id)
+);
+CREATE INDEX idx_kt_keyword ON keyword_transcript_map(keyword_id);
+CREATE INDEX idx_kt_transcript ON keyword_transcript_map(transcript_id);
+
+-- =========================
+-- quiz_items（小测题目）
+-- =========================
+CREATE TABLE quiz_items (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+session_id INTEGER NOT NULL,
+
+type TEXT,                     -- choice / short_answer
+question TEXT NOT NULL,
+answer TEXT,
+explanation TEXT,
+
+created_at INTEGER,
+
+FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+CREATE INDEX idx_quiz_session ON quiz_items(session_id);
+CREATE INDEX idx_quiz_type ON quiz_items(type);
+
+-- =========================
+-- quiz_item_transcript_map（小测题目-上下文映射）
+-- =========================
+CREATE TABLE quiz_item_transcript_map (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    quiz_item_id INTEGER NOT NULL,
+    transcript_id INTEGER NOT NULL,
+
+    FOREIGN KEY (quiz_item_id) REFERENCES quiz_items(id),
+    FOREIGN KEY (transcript_id) REFERENCES transcripts(id)
+);
+CREATE INDEX idx_qitm_quiz ON quiz_item_transcript_map(quiz_item_id);
+CREATE INDEX idx_qitm_transcript ON quiz_item_transcript_map(transcript_id);
+
+-- =========================
+-- knowledge_points（知识点）
+-- =========================
+CREATE TABLE knowledge_points (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+session_id INTEGER NOT NULL,
+
+name TEXT NOT NULL,         -- 知识点名称（标准名）
+description TEXT,           -- 简要说明（LLM生成）
+difficulty TEXT,            -- 难易程度（如：easy, medium, hard）
+
+created_at INTEGER,
+
+FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+CREATE INDEX idx_kp_name ON knowledge_points(name);
+CREATE INDEX idx_kp_session ON knowledge_points(session_id);
+
+-- =========================
+-- knowledge_point_transcript_map（知识点-上下文映射）
+-- =========================
+CREATE TABLE knowledge_point_transcript_map (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    knowledge_point_id INTEGER NOT NULL,
+    transcript_id INTEGER NOT NULL,
+
+    FOREIGN KEY (knowledge_point_id) REFERENCES knowledge_points(id),
+    FOREIGN KEY (transcript_id) REFERENCES transcripts(id)
+);
+CREATE INDEX idx_kpt_kp ON knowledge_point_transcript_map(knowledge_point_id);
+CREATE INDEX idx_kpt_transcript ON knowledge_point_transcript_map(transcript_id);
+
+-- =========================
+-- reports（课后报告）
+-- =========================
+CREATE TABLE reports (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+session_id INTEGER NOT NULL,
+
+content TEXT,   -- 报告HTML版本内容
+file_path TEXT,
+
+created_at INTEGER,
+
+FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+CREATE INDEX idx_reports_session ON reports(session_id);
 
 -- =========================
 -- llm_infos（LLM 模型价格信息）
@@ -181,7 +285,6 @@ CREATE TABLE llm_infos (
     cache_read REAL,
     cache_write REAL
 );
-
 
 -- =========================
 -- relay_logs（请求日志）
@@ -206,7 +309,6 @@ CREATE TABLE relay_logs (
     total_attempts INTEGER
 );
 
-
 -- =========================
 -- stats_totals（全量累计统计）
 -- =========================
@@ -224,12 +326,11 @@ CREATE TABLE stats_totals (
     request_failed BIGINT
 );
 
-
 -- =========================
 -- stats_dailies（按日统计）
 -- =========================
 CREATE TABLE stats_dailies (
-    date TEXT PRIMARY KEY,
+    date TEXT NOT NULL,
 
     service_type TEXT NOT NULL CHECK(service_type IN (
         'llm', 'tts', 'asr'
@@ -239,17 +340,18 @@ CREATE TABLE stats_dailies (
     output_value BIGINT,
     wait_time BIGINT,
     request_success BIGINT,
-    request_failed BIGINT
-);
+    request_failed BIGINT,
 
+    PRIMARY KEY (date, service_type)
+);
 
 -- =========================
 -- stats_hourlies（按小时统计）
 -- =========================
 CREATE TABLE stats_hourlies (
-    hour INTEGER PRIMARY KEY AUTOINCREMENT,
-
     date TEXT NOT NULL,
+    hour INTEGER NOT NULL,
+
     service_type TEXT NOT NULL CHECK(service_type IN (
         'llm', 'tts', 'asr'
     )), -- 服务类型
@@ -258,9 +360,10 @@ CREATE TABLE stats_hourlies (
     output_value BIGINT,
     wait_time BIGINT,
     request_success BIGINT,
-    request_failed BIGINT
-);
+    request_failed BIGINT,
 
+    PRIMARY KEY (date, hour, service_type)
+);
 
 -- =========================
 -- settings（系统设置键值对）
@@ -269,7 +372,6 @@ CREATE TABLE settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
-
 
 -- =========================
 -- migration_records（数据库迁移版本记录）
