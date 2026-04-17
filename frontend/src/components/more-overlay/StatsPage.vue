@@ -306,7 +306,7 @@ const handlePeriodClick = () => {
 
 // 显示热力图 tooltip
 const showHeatmapTooltip = (dot, event) => {
-  const tooltipWidth = 140 // 与 CSS 中的 min-width 一致
+  const tooltipWidth = 210 // 与 CSS 中的 min-width 一致
   const offsetY = 10 // 距离光标的垂直距离
   
   heatmapTooltip.value = {
@@ -537,15 +537,15 @@ const handleHeatmapScroll = (e) => {
   position: fixed;
   background: linear-gradient(180deg, rgba(20, 40, 32, 0.95), rgba(15, 30, 25, 0.95));
   border: 1px solid rgba(132, 230, 148, 0.3);
-  border-radius: 8px;
-  padding: 10px 12px;
+  border-radius: 12px;
+  padding: 14px 16px;
   z-index: 9999999;
-  font-size: 0.8rem;
+  font-size: 0.98rem;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   pointer-events: none;
-  min-width: 140px;
+  min-width: 210px;
 }
 
 .tooltip-date {
@@ -553,7 +553,7 @@ const handleHeatmapScroll = (e) => {
   border-bottom: 1px solid rgba(132, 230, 148, 0.2);
   padding-bottom: 8px;
   text-align: left;
-  font-size: 1rem;
+  font-size: 1.14rem;
   color: #e8f8ee;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -569,20 +569,20 @@ const handleHeatmapScroll = (e) => {
 
 .tooltip-label {
   color: rgba(180, 217, 197, 0.8);
-  font-size: 0.73rem;
+  font-size: 0.86rem;
 }
 
 .tooltip-value {
   color: #84e694;
   font-weight: 600;
-  font-size: 0.8rem;
+  font-size: 0.95rem;
   white-space: nowrap;
   text-align: right;
 }
 
 .tooltip-empty {
   color: rgba(193, 221, 206, 0.78);
-  font-size: 0.78rem;
+  font-size: 0.92rem;
   text-align: left;
 }
 
