@@ -77,8 +77,19 @@ export function useClassroomPage() {
   const queuedQuestions = ref([])
   const stats = ref([])
   const logs = ref([])
+  const wsTrafficLogs = ref([])
   const onDeviceChange = () => {
     void refreshMicrophones()
+  }
+
+  function appendWsTrafficLog(direction, content) {
+    const now = formatTime(Math.floor(Date.now() / 1000))
+    const safeDirection = direction === 'send' ? 'SEND' : direction === 'recv' ? 'RECV' : 'INFO'
+    wsTrafficLogs.value = [...wsTrafficLogs.value, `${now} [${safeDirection}] ${content}`]
+  }
+
+  function clearWsTrafficLogs() {
+    wsTrafficLogs.value = []
   }
 
   function getSessionRuntime(sessionId) {
@@ -559,6 +570,12 @@ export function useClassroomPage() {
       return
     }
 
+    const payloadPreview = JSON.stringify(payload)
+    appendWsTrafficLog(
+      'recv',
+      payloadPreview.length > 240 ? `${payloadPreview.slice(0, 240)}...` : payloadPreview
+    )
+
     const { type, data } = payload
     const now = Math.floor(Date.now() / 1000)
 
@@ -667,6 +684,7 @@ export function useClassroomPage() {
 
       ws.onopen = () => {
         appendLog(`${formatTime(Math.floor(Date.now() / 1000))} WS连接成功`) 
+        appendWsTrafficLog('info', `WS connected: session ${sessionId}`)
         resolve()
       }
 
@@ -676,16 +694,20 @@ export function useClassroomPage() {
           handleWsMessage(payload)
         } catch {
           appendLog(`${formatTime(Math.floor(Date.now() / 1000))} WS消息解析失败`)
+          const rawData = typeof event.data === 'string' ? event.data : '[binary data]'
+          appendWsTrafficLog('recv', `Invalid JSON: ${rawData.slice(0, 240)}`)
         }
       }
 
       ws.onerror = () => {
         appendLog(`${formatTime(Math.floor(Date.now() / 1000))} WS连接异常`)
+        appendWsTrafficLog('info', 'WS error')
       }
 
       ws.onclose = () => {
         wsRef.value = null
         activeWsSessionId.value = null
+        appendWsTrafficLog('info', 'WS closed')
       }
 
       window.setTimeout(() => {
@@ -850,19 +872,24 @@ export function useClassroomPage() {
           const endTime = Math.floor(Date.now() / 1000)
           const audioBase64 = await blobToBase64(chunk)
 
-          activeWs.send(
-            JSON.stringify({
-              type: 'audio_in',
-              data: {
-                audio: audioBase64,
-                start_time: chunkStartTime,
-                end_time: endTime
-              }
-            })
+          const outboundPayload = {
+            type: 'audio_in',
+            data: {
+              audio: audioBase64,
+              start_time: chunkStartTime,
+              end_time: endTime
+            }
+          }
+
+          activeWs.send(JSON.stringify(outboundPayload))
+          appendWsTrafficLog(
+            'send',
+            `audio_in ${Math.round(chunk.size / 1024)}KB [${outboundPayload.data.start_time}-${outboundPayload.data.end_time}]`
           )
           appendLog(`${formatTime(Math.floor(Date.now() / 1000))} 录音分片已发送 ${Math.round(chunk.size / 1024)}KB`) 
         } catch {
           appendLog(`${formatTime(Math.floor(Date.now() / 1000))} 发送录音失败`) 
+          appendWsTrafficLog('info', 'Send audio chunk failed')
         } finally {
           clearChunkStopTimer()
           mediaRecorderRef.value = null
@@ -1297,6 +1324,7 @@ export function useClassroomPage() {
     queuedQuestions,
     stats,
     logs,
+    wsTrafficLogs,
     sessionStatusLabel,
     canStartSession,
     canEndSession,
@@ -1319,6 +1347,7 @@ export function useClassroomPage() {
     handleMicrophoneChange,
     toggleStartPause,
     endCurrentSession,
-    refreshMicrophones
+    refreshMicrophones,
+    clearWsTrafficLogs
   }
 }

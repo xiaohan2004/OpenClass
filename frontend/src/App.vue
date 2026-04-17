@@ -220,7 +220,19 @@
       <transition name="drawer">
         <div v-if="showDebugToggle && debugPanelOpen" class="debug-panel glass-panel">
           <p class="debug-title">调试工具</p>
-          <p class="debug-meta">调试功能已清空。</p>
+          <div class="debug-header-row">
+            <p class="debug-meta">WS 收发记录（共 {{ wsTrafficLogs.length }} 条）</p>
+            <div class="debug-actions">
+              <button class="ghost-button debug-action-button" type="button" @click="copyWsTrafficLogs">{{ copyButtonText }}</button>
+              <button class="ghost-button debug-action-button" type="button" @click="clearWsTrafficLogs">清空</button>
+            </div>
+          </div>
+          <div ref="debugWsListRef" class="debug-ws-list" @scroll="handleDebugWsScroll">
+            <p v-for="(item, index) in wsTrafficLogs" :key="`${index}-${item}`" class="debug-ws-item">
+              {{ item }}
+            </p>
+            <p v-if="wsTrafficLogs.length === 0" class="debug-ws-empty">暂无 WS 日志</p>
+          </div>
         </div>
       </transition>
     </section>
@@ -276,13 +288,17 @@
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, ref } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import MoreLayout from './components/MoreLayout.vue'
 import { useClassroomPage } from './composables/useClassroomPage'
 
 const moreOverlayOpen = ref(false)
 const showDebugToggle = ref(true)
 const DEBUG_TOGGLE_STORAGE_KEY = 'openclass.ui.showDebugToggle'
+const debugWsListRef = ref(null)
+const wsAutoFollow = ref(true)
+const copyButtonText = ref('复制')
+let copyFeedbackTimer = null
 
 const syncDebugToggleFromStorage = () => {
   let visible = true
@@ -334,6 +350,7 @@ const {
   transcriptItems,
   summaries,
   queuedQuestions,
+  wsTrafficLogs,
   sessionStatusLabel,
   canStartSession,
   canEndSession,
@@ -355,8 +372,77 @@ const {
   handleSessionChange,
   handleMicrophoneChange,
   toggleStartPause,
-  endCurrentSession
+  endCurrentSession,
+  clearWsTrafficLogs
 } = useClassroomPage()
+
+async function copyWsTrafficLogs() {
+  const content = wsTrafficLogs.value.join('\n')
+  if (!content) {
+    copyButtonText.value = '暂无内容'
+    if (copyFeedbackTimer) {
+      window.clearTimeout(copyFeedbackTimer)
+    }
+    copyFeedbackTimer = window.setTimeout(() => {
+      copyButtonText.value = '复制'
+    }, 500)
+    return
+  }
+
+  try {
+    await navigator.clipboard.writeText(content)
+  } catch {
+    const textarea = document.createElement('textarea')
+    textarea.value = content
+    textarea.setAttribute('readonly', 'true')
+    textarea.style.position = 'fixed'
+    textarea.style.top = '-9999px'
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textarea)
+  }
+
+  copyButtonText.value = '复制成功'
+  if (copyFeedbackTimer) {
+    window.clearTimeout(copyFeedbackTimer)
+  }
+  copyFeedbackTimer = window.setTimeout(() => {
+    copyButtonText.value = '复制'
+  }, 700)
+}
+
+function handleDebugWsScroll() {
+  const listEl = debugWsListRef.value
+  if (!listEl) {
+    return
+  }
+
+  const threshold = 8
+  wsAutoFollow.value = listEl.scrollTop + listEl.clientHeight >= listEl.scrollHeight - threshold
+}
+
+watch(wsTrafficLogs, async () => {
+  await nextTick()
+  const listEl = debugWsListRef.value
+  if (!listEl || !wsAutoFollow.value) {
+    return
+  }
+  listEl.scrollTop = listEl.scrollHeight
+})
+
+watch(debugPanelOpen, async (isOpen) => {
+  if (!isOpen) {
+    return
+  }
+  await nextTick()
+  const listEl = debugWsListRef.value
+  if (!listEl) {
+    return
+  }
+  listEl.scrollTop = listEl.scrollHeight
+  wsAutoFollow.value = true
+})
 
 onMounted(() => {
   syncDebugToggleFromStorage()
@@ -365,6 +451,10 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  if (copyFeedbackTimer) {
+    window.clearTimeout(copyFeedbackTimer)
+    copyFeedbackTimer = null
+  }
   window.removeEventListener('storage', handleStorageEvent)
   window.removeEventListener('openclass:debug-toggle-updated', handleDebugToggleUpdated)
 })
