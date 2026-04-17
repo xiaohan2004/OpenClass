@@ -494,17 +494,17 @@ button {
 .floating-stack {
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 1fr) auto;
+  grid-template-columns: clamp(320px, 34vw, 500px) minmax(0, 1fr) clamp(190px, 20vw, 260px);
   gap: 14px;
-  align-items: end;
+  align-items: stretch;
   padding-bottom: 6px;
 }
 
 .mic-inline {
-  width: min(520px, 100%);
+  width: 100%;
   border-radius: 999px;
   padding: 12px 16px;
-  min-height: 52px;
+  min-height: 58px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -570,18 +570,19 @@ button {
 }
 
 .control-bar {
-  width: fit-content;
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 16px;
   padding: 12px 16px;
   border-radius: 999px;
-  justify-self: end;
-  min-height: 52px;
+  justify-self: stretch;
+  justify-content: center;
+  min-height: 58px;
 }
 
 .ask-status-bar {
-  min-height: 52px;
+  min-height: 58px;
   border-radius: 18px;
   padding: 10px 14px;
   display: grid;
