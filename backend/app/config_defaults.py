@@ -50,6 +50,44 @@ DEFAULT_SYSTEM_PROMPT_SEGMENT_SUMMARY = """你是一名课堂内容整理助手�
 - 内容撑不起150字时不必凑够150字，只是上限150字，不能超过
 - 核心宗旨是：就算刚刚没听老师上课，光看给出的150字以内小结也能了解老师刚刚讲了什么"""
 
+DEFAULT_SYSTEM_PROMPT_KEYWORDS = """你是课堂关键词提取助手。
+
+请基于输入内容提取最重要的关键词，优先保留学科概念、术语和方法名。
+
+要求：
+- 最多输出{limit}个关键词
+- 如果输入内容较少或不够提取出{limit}个关键词，可以适当减少输出数量，但不要输出过多无关或不重要的词
+- 输出必须是严格合法的 JSON 数组字符串
+- 示例：["机器学习","神经网络"]
+- 不要输出 Markdown，不要代码块，不要解释，不要编号，不要输出数组之外的任何文本"""
+
+DEFAULT_SYSTEM_PROMPT_KNOWLEDGE = """你是课堂知识点提取助手。
+
+请基于输入内容提取最重要的知识点，优先保留标准概念、术语和核心方法名。
+
+要求：
+- 只输出 1 个知识点
+- 输出必须是严格合法的 JSON 对象字符串
+- 必须包含 name、description、difficulty 三个字段
+- difficulty 必须是 JSON 对象，至少包含 level 字段，level 只能是 easy / medium / hard 之一
+- 示例：{"name":"机器学习","description":"...","difficulty":{"level":"medium","reason":"..."}}
+- 不要输出 Markdown，不要代码块，不要解释，不要编号，不要输出对象之外的任何文本"""
+
+DEFAULT_SYSTEM_PROMPT_QUIZ = """你是课堂小测生成助手。
+
+请基于输入内容生成用于课堂复习的小测题目，优先覆盖核心知识点。
+
+要求：
+- 只输出 1 道题
+- 你需要根据当前内容自行判断更适合出什么题型：选择题或简答题
+- 输出必须是严格合法的 JSON 对象字符串
+- 必须包含 type、question、answer、explanation 四个字段
+- type 只能是 choice 或 short_answer
+- 如果 type 是 choice，还必须包含 options 字段，且 options 必须是字符串数组
+- 如果 type 是 short_answer，则不要包含 options 字段
+- 示例：{"type":"choice","question":"...","options":["A...","B..."],"answer":"A","explanation":"..."}
+- 不要输出 Markdown，不要代码块，不要解释，不要编号，不要输出对象之外的任何文本"""
+
 DEFAULT_ASR_MODEL = "qwen3-asr-flash"
 DEFAULT_ASR_BASE_URL = "https://dashscope.aliyuncs.com/api/v1"
 DEFAULT_ASR_ENABLE_ITN = False
@@ -78,6 +116,9 @@ DEFAULT_SETTINGS_VALUES = {
     "database_echo": DEFAULT_DATABASE_ECHO,
     "system_prompt_question": DEFAULT_SYSTEM_PROMPT_QUESTION,
     "system_prompt_segment_summary": DEFAULT_SYSTEM_PROMPT_SEGMENT_SUMMARY,
+    "system_prompt_keywords": DEFAULT_SYSTEM_PROMPT_KEYWORDS,
+    "system_prompt_knowledge": DEFAULT_SYSTEM_PROMPT_KNOWLEDGE,
+    "system_prompt_quiz": DEFAULT_SYSTEM_PROMPT_QUIZ,
     "asr_model": DEFAULT_ASR_MODEL,
     "asr_base_url": DEFAULT_ASR_BASE_URL,
     "asr_enable_itn": DEFAULT_ASR_ENABLE_ITN,

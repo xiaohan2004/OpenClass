@@ -10,6 +10,9 @@ from sqlmodel import Session
 
 from app.config_defaults import (
     DEFAULT_SETTINGS_VALUES,
+    DEFAULT_SYSTEM_PROMPT_KNOWLEDGE,
+    DEFAULT_SYSTEM_PROMPT_KEYWORDS,
+    DEFAULT_SYSTEM_PROMPT_QUIZ,
     DEFAULT_SYSTEM_PROMPT_QUESTION,
     DEFAULT_SYSTEM_PROMPT_SEGMENT_SUMMARY,
 )
@@ -36,7 +39,9 @@ class Settings(BaseModel):
     max_questions: int = DEFAULT_SETTINGS_VALUES["max_questions"]
 
     # 并发配置
-    question_concurrent_workers: int = DEFAULT_SETTINGS_VALUES["question_concurrent_workers"]
+    question_concurrent_workers: int = DEFAULT_SETTINGS_VALUES[
+        "question_concurrent_workers"
+    ]
 
     # 上下文维护配置
     recent_lecture_window: int = DEFAULT_SETTINGS_VALUES["recent_lecture_window"]
@@ -54,6 +59,9 @@ class Settings(BaseModel):
     system_prompt_segment_summary: str = DEFAULT_SETTINGS_VALUES[
         "system_prompt_segment_summary"
     ]
+    system_prompt_keywords: str = DEFAULT_SETTINGS_VALUES["system_prompt_keywords"]
+    system_prompt_knowledge: str = DEFAULT_SETTINGS_VALUES["system_prompt_knowledge"]
+    system_prompt_quiz: str = DEFAULT_SETTINGS_VALUES["system_prompt_quiz"]
 
     # ASR 配置
     asr_model: str = DEFAULT_SETTINGS_VALUES["asr_model"]
@@ -119,3 +127,6 @@ get_settings.cache_clear = _cache_clear  # type: ignore[attr-defined]
 
 SYSTEM_PROMPT_QUESTION = DEFAULT_SYSTEM_PROMPT_QUESTION
 SYSTEM_PROMPT_SEGMENT_SUMMARY = DEFAULT_SYSTEM_PROMPT_SEGMENT_SUMMARY
+SYSTEM_PROMPT_KEYWORDS = DEFAULT_SYSTEM_PROMPT_KEYWORDS
+SYSTEM_PROMPT_KNOWLEDGE = DEFAULT_SYSTEM_PROMPT_KNOWLEDGE
+SYSTEM_PROMPT_QUIZ = DEFAULT_SYSTEM_PROMPT_QUIZ

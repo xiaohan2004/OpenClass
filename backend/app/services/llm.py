@@ -9,8 +9,11 @@ from functools import lru_cache
 from openai import OpenAI
 
 from app.config import (
+    SYSTEM_PROMPT_KEYWORDS,
     SYSTEM_PROMPT_QUESTION,
     SYSTEM_PROMPT_SEGMENT_SUMMARY,
+    SYSTEM_PROMPT_KNOWLEDGE,
+    SYSTEM_PROMPT_QUIZ,
     get_settings,
 )
 from app.services.metrics import record_service_usage
@@ -42,7 +45,7 @@ def get_llm_client() -> OpenAI:
     return _build_llm_client(api_key, settings.deepseek_base_url)
 
 
-def _generate_with_prompt(
+def generate_with_prompt(
     *,
     context: str,
     system_prompt: str,
@@ -111,10 +114,10 @@ def _generate_with_prompt(
 
 def generate_question(context: str) -> str:
     """
-    根据教师讲课文本生成学生可能提出的问题
+    根据课堂上下文生成学生可能提出的问题
 
     Args:
-        context: 讲课上下文
+        context: 课堂上下文
 
     Returns:
         生成的问题字符串
@@ -125,7 +128,7 @@ def generate_question(context: str) -> str:
             getattr(settings, "system_prompt_question", None),
             SYSTEM_PROMPT_QUESTION,
         )
-        return _generate_with_prompt(
+        return generate_with_prompt(
             context=context,
             system_prompt=system_prompt,
         )
@@ -150,10 +153,88 @@ def generate_segment_summary(context: str) -> str:
             getattr(settings, "system_prompt_segment_summary", None),
             SYSTEM_PROMPT_SEGMENT_SUMMARY,
         )
-        return _generate_with_prompt(
+        return generate_with_prompt(
             context=context,
             system_prompt=system_prompt,
         )
     except Exception as e:
         logger.error("阶段小结生成失败: %s", e)
+        raise
+
+
+def generate_keywords(context: str, limit: int = 10) -> str:
+    """
+    根据课堂上下文直接提取关键词。
+
+    Args:
+        context: 课堂上下文
+        limit: 关键词数量上限
+
+    Returns:
+        LLM 返回的关键词文本（约定为 JSON 字符串）
+    """
+    try:
+        settings = get_settings()
+        keyword_limit = max(1, int(limit))
+        prompt_template = _resolve_string_setting(
+            getattr(settings, "system_prompt_keywords", None),
+            SYSTEM_PROMPT_KEYWORDS,
+        )
+        system_prompt = prompt_template.replace("{limit}", str(keyword_limit))
+        return generate_with_prompt(
+            context=context,
+            system_prompt=system_prompt,
+        )
+    except Exception as e:
+        logger.error("关键词提取失败: %s", e)
+        raise
+
+
+def generate_knowledge(context: str) -> str:
+    """
+    根据课堂上下文提取知识点。
+
+    Args:
+        context: 课堂上下文
+    Returns:
+        LLM 返回的知识点文本（约定为 JSON 字符串）
+    """
+    try:
+        settings = get_settings()
+        prompt_template = _resolve_string_setting(
+            getattr(settings, "system_prompt_knowledge", None),
+            SYSTEM_PROMPT_KNOWLEDGE,
+        )
+        system_prompt = prompt_template
+        return generate_with_prompt(
+            context=context,
+            system_prompt=system_prompt,
+        )
+    except Exception as e:
+        logger.error("知识点提取失败: %s", e)
+        raise
+
+
+def generate_quiz(context: str) -> str:
+    """
+    根据课堂上下文生成小测题目。
+
+    Args:
+        context: 课堂上下文
+    Returns:
+        LLM 返回的小测文本（约定为 JSON 字符串）
+    """
+    try:
+        settings = get_settings()
+        prompt_template = _resolve_string_setting(
+            getattr(settings, "system_prompt_quiz", None),
+            SYSTEM_PROMPT_QUIZ,
+        )
+        system_prompt = prompt_template
+        return generate_with_prompt(
+            context=context,
+            system_prompt=system_prompt,
+        )
+    except Exception as e:
+        logger.error("小测生成失败: %s", e)
         raise
