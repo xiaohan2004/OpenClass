@@ -431,6 +431,18 @@ REST 响应统一约定（适用于所有 REST API）：
 - `data`：返回修改后的完整模型（列表接口则为完整模型数组）。
 - 未单独展开 Response 示例的 REST 接口也遵循同一结构。
 - 控制接口与删除接口统一返回空数据：`"data": {}`。
+- 资源不存在时返回 HTTP `404`。
+
+### 健康检查
+```
+GET /health
+
+Response
+{
+  "status": "ok",
+  "message": "服务正常运行"
+}
+```
 
 ### 控制接口 - REST API
 用于控制课堂的开始/暂停/结束。
@@ -495,12 +507,14 @@ WS /ws/session/{session_id}
     {
     "type": "audio_in",
     "data": {
-      "audio": <前端音频输入，base64>,
+      "audio": <前端音频输入，base64字符串>,
       "start_time":<开始时间戳>,
       "end_time":<结束时间戳>
       }
     }
     ```
+   - `audio` 必须是纯 base64 字符串，不能是 data URL。
+   - `start_time`、`end_time` 必须是 `int`。
 
 2. 服务端 → 客户端（输出流）
    1. 转写结果（ASR）
@@ -530,8 +544,18 @@ WS /ws/session/{session_id}
     4. TTS音频输出
     ```
     {
-    "type": "tts_out",
-    "data": <data>
+      "type": "tts_out",
+      "data": <data>
+    }
+    ```
+
+    5. 错误消息（例如课堂不存在）
+    ```
+    {
+      "type": "error",
+      "data": {
+        "message": "课堂不存在: 1"
+      }
     }
     ```
 
@@ -605,12 +629,7 @@ POST /api/sessions
 Request
 {
   "course_id": 1,
-  "title": "第一节：极限",
-  "seq": 1,
-  "config": {
-    "ask_interval_sec": 120,
-    "summary_window_sec": 180
-  }
+  "title": "第一节：极限"
 }
 
 Response
@@ -624,10 +643,6 @@ Response
     "title": "第一节：极限",
     "start_time": null,
     "end_time": null,
-    "config": {
-      "ask_interval_sec": 120,
-      "summary_window_sec": 180
-    },
     "created_at": 1712995000
   }
 }
@@ -650,12 +665,7 @@ PUT /api/sessions/{session_id}
 
 Request
 {
-  "title": "第一节：极限与连续",
-  "seq": 1,
-  "config": {
-    "ask_interval_sec": 120,
-    "summary_window_sec": 180
-  }
+  "title": "第一节：极限与连续"
 }
 ```
 
@@ -690,7 +700,7 @@ GET /api/sessions/{session_id}/transcripts
 
 4. 提问（questions）
 说明：
-- 提问只提供查询与更新接口，生成/入队/提问等动作由主流程内部完成，不作为独立 CRUD 暴露。
+- 提问只提供查询与更新接口，生成与写入由后端负责。
 
 ```
 GET /api/questions
@@ -716,7 +726,7 @@ Request
 
 5. 分段小结（segment_summaries）
 说明：
-- 分段小结只提供查询接口，生成与维护由后台摘要任务负责。
+- 分段小结只提供查询接口，生成与维护由后端负责。
 
 ```
 GET /api/segment-summaries
@@ -730,14 +740,99 @@ GET /api/segment-summaries/{summary_id}
 GET /api/sessions/{session_id}/segment-summaries
 ```
 
-6. 运行日志与统计（只读为主）
+6. 关键词（keywords）
+说明：
+- 关键词只提供查询接口，提取与写入由后端负责。
+
 ```
-GET /api/relay-logs
+GET /api/keywords
+GET /api/keywords/{keyword_id}
+GET /api/sessions/{session_id}/keywords
+```
+
+7. 小测题目（quiz_items）
+说明：
+- 小测题目只提供查询接口，题目生成与写入由后端负责。
+
+```
+GET /api/quiz-items
+GET /api/quiz-items/{quiz_item_id}
+GET /api/sessions/{session_id}/quiz-items
+```
+
+8. 知识点（knowledge_points）
+说明：
+- 知识点只提供查询接口，知识点提取与写入由后端负责。
+
+```
+GET /api/knowledge-points
+GET /api/knowledge-points/{knowledge_point_id}
+GET /api/sessions/{session_id}/knowledge-points
+```
+
+9. 课后报告（reports）
+说明：
+- 课后报告只提供查询接口，报告生成与写入由后端负责。
+
+```
+GET /api/reports
+GET /api/reports/{report_id}
+GET /api/sessions/{session_id}/reports
+```
+
+10. 运行日志与统计（只读为主）
+```
+GET /api/relay-logs?service_type=llm&limit=20&offset=0
 GET /api/relay-logs/{id}
 GET /api/stats/totals
+GET /api/stats/totals/{id}
 GET /api/stats/dailies
 GET /api/stats/hourlies
 ```
+
+11. 设置（settings）
+```
+GET /api/settings
+PATCH /api/settings
+```
+
+`PATCH /api/settings` 请求示例：
+```json
+{
+  "items": [
+    {"key": "deepseek_base_url", "value": "https://custom.example.com"},
+    {"key": "max_tokens", "value": 2048}
+  ]
+}
+```
+
+响应示例（包含 `has_value` 状态）：
+```json
+{
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "items": [
+      {
+        "key": "deepseek_api_key",
+        "value": null,
+        "sensitive": true,
+        "has_value": true
+      },
+      {
+        "key": "deepseek_base_url",
+        "value": "https://custom.example.com",
+        "sensitive": false,
+        "has_value": true
+      }
+    ]
+  }
+}
+```
+
+说明：
+- 仅允许更新后端预定义配置项，未知键会返回 HTTP `400`。
+- 敏感配置（如 `deepseek_api_key`）在查询结果中不返回明文，只返回 `has_value` 状态。
 
 ## 项目目录
 ```

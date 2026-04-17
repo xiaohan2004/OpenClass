@@ -21,8 +21,12 @@ import app.db.session as db_session_module
 from app.db import init_db
 from app.db.crud import (
     create_course,
+    create_keyword,
+    create_knowledge_point,
     create_question,
+    create_quiz_item,
     create_relay_log,
+    create_report,
     create_segment_summary,
     create_session,
     create_stats_hourly,
@@ -105,6 +109,28 @@ class TestAPI(unittest.TestCase):
                 end_time=1712995300,
                 score=0.9,
             )
+            keyword = create_keyword(db, session.id, '["极限", "导数"]')
+            quiz_item = create_quiz_item(
+                db,
+                session.id,
+                "函数连续的判定条件是什么？",
+                item_type="short_answer",
+                answer="左右极限存在且相等并等于函数值",
+                explanation="连续定义的三要素",
+            )
+            knowledge_point = create_knowledge_point(
+                db,
+                session.id,
+                "函数连续",
+                description="函数在某点连续的定义",
+                difficulty="easy",
+            )
+            report = create_report(
+                db,
+                session.id,
+                content="课堂总结报告",
+                file_path="/tmp/report.pdf",
+            )
             relay_log = create_relay_log(
                 db,
                 time=1712995200,
@@ -129,6 +155,10 @@ class TestAPI(unittest.TestCase):
                 "transcript_id": transcript.id,
                 "question_id": question.id,
                 "summary_id": summary.id,
+                "keyword_id": keyword.id,
+                "quiz_item_id": quiz_item.id,
+                "knowledge_point_id": knowledge_point.id,
+                "report_id": report.id,
                 "relay_log_id": relay_log.id,
                 "stats_total_id": stats_total.id,
             }
@@ -370,6 +400,82 @@ class TestAPI(unittest.TestCase):
         self.assertEqual(summary_by_session.status_code, 200)
         self.assertEqual(len(summary_by_session.json()["data"]), 1)
 
+        keywords_response = self.request("GET", "/api/keywords")
+        self.assertEqual(keywords_response.status_code, 200)
+        self.assertEqual(
+            keywords_response.json()["data"][0]["id"], self.seed_data["keyword_id"]
+        )
+
+        keyword_detail = self.request(
+            "GET", f"/api/keywords/{self.seed_data['keyword_id']}"
+        )
+        self.assertEqual(keyword_detail.status_code, 200)
+        self.assertIn("极限", keyword_detail.json()["data"]["keyword_sets"])
+
+        keyword_by_session = self.request(
+            "GET", f"/api/sessions/{self.seed_data['session_id']}/keywords"
+        )
+        self.assertEqual(keyword_by_session.status_code, 200)
+        self.assertEqual(len(keyword_by_session.json()["data"]), 1)
+
+        quiz_items_response = self.request("GET", "/api/quiz-items")
+        self.assertEqual(quiz_items_response.status_code, 200)
+        self.assertEqual(
+            quiz_items_response.json()["data"][0]["id"],
+            self.seed_data["quiz_item_id"],
+        )
+
+        quiz_item_detail = self.request(
+            "GET", f"/api/quiz-items/{self.seed_data['quiz_item_id']}"
+        )
+        self.assertEqual(quiz_item_detail.status_code, 200)
+        self.assertEqual(quiz_item_detail.json()["data"]["type"], "short_answer")
+
+        quiz_item_by_session = self.request(
+            "GET", f"/api/sessions/{self.seed_data['session_id']}/quiz-items"
+        )
+        self.assertEqual(quiz_item_by_session.status_code, 200)
+        self.assertEqual(len(quiz_item_by_session.json()["data"]), 1)
+
+        knowledge_points_response = self.request("GET", "/api/knowledge-points")
+        self.assertEqual(knowledge_points_response.status_code, 200)
+        self.assertEqual(
+            knowledge_points_response.json()["data"][0]["id"],
+            self.seed_data["knowledge_point_id"],
+        )
+
+        knowledge_point_detail = self.request(
+            "GET",
+            f"/api/knowledge-points/{self.seed_data['knowledge_point_id']}",
+        )
+        self.assertEqual(knowledge_point_detail.status_code, 200)
+        self.assertEqual(knowledge_point_detail.json()["data"]["name"], "函数连续")
+
+        knowledge_point_by_session = self.request(
+            "GET", f"/api/sessions/{self.seed_data['session_id']}/knowledge-points"
+        )
+        self.assertEqual(knowledge_point_by_session.status_code, 200)
+        self.assertEqual(len(knowledge_point_by_session.json()["data"]), 1)
+
+        reports_response = self.request("GET", "/api/reports")
+        self.assertEqual(reports_response.status_code, 200)
+        self.assertEqual(
+            reports_response.json()["data"][0]["id"],
+            self.seed_data["report_id"],
+        )
+
+        report_detail = self.request(
+            "GET", f"/api/reports/{self.seed_data['report_id']}"
+        )
+        self.assertEqual(report_detail.status_code, 200)
+        self.assertIn("课堂总结", report_detail.json()["data"]["content"])
+
+        report_by_session = self.request(
+            "GET", f"/api/sessions/{self.seed_data['session_id']}/reports"
+        )
+        self.assertEqual(report_by_session.status_code, 200)
+        self.assertEqual(len(report_by_session.json()["data"]), 1)
+
         relay_logs_response = self.request("GET", "/api/relay-logs")
         self.assertEqual(relay_logs_response.status_code, 200)
         self.assertEqual(
@@ -461,6 +567,13 @@ class TestAPI(unittest.TestCase):
         self.assertEqual(self.request("GET", "/api/courses/99999").status_code, 404)
         self.assertEqual(self.request("GET", "/api/sessions/99999").status_code, 404)
         self.assertEqual(self.request("GET", "/api/questions/99999").status_code, 404)
+        self.assertEqual(self.request("GET", "/api/keywords/99999").status_code, 404)
+        self.assertEqual(self.request("GET", "/api/quiz-items/99999").status_code, 404)
+        self.assertEqual(
+            self.request("GET", "/api/knowledge-points/99999").status_code,
+            404,
+        )
+        self.assertEqual(self.request("GET", "/api/reports/99999").status_code, 404)
 
 
 def main():

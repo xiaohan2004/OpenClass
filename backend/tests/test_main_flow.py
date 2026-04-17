@@ -61,7 +61,7 @@ class TestHandleAudio(unittest.IsolatedAsyncioTestCase):
                 )
 
     @patch("app.core.main_flow.random.random")
-    async def test_handle_audio_sends_audio_out_when_asking(
+    async def test_handle_audio_sends_tts_out_when_asking(
         self,
         mock_random,
     ):
@@ -89,7 +89,7 @@ class TestHandleAudio(unittest.IsolatedAsyncioTestCase):
                             for call in safe_ws.send_json.await_args_list
                         ]
                         self.assertIn("transcript", sent_types)
-                        self.assertIn("audio_out", sent_types)
+                        self.assertIn("tts_out", sent_types)
 
 
 class TestBackgroundTasks(unittest.IsolatedAsyncioTestCase):

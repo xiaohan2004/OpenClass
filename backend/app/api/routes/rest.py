@@ -17,18 +17,30 @@ from app.db.crud import (
     close_session,
     create_course,
     create_session,
+    get_keyword_by_id,
+    get_knowledge_point_by_id,
     list_settings,
     get_course_by_id,
     get_question_by_id,
+    get_quiz_item_by_id,
     get_relay_log_by_id,
+    get_report_by_id,
     get_segment_summary_by_id,
     get_session_by_id,
     get_stats_total_by_id,
     get_transcript_by_id,
     list_courses,
+    list_keywords,
+    list_keywords_by_session,
+    list_knowledge_points,
+    list_knowledge_points_by_session,
     list_questions,
     list_questions_by_session,
+    list_quiz_items,
+    list_quiz_items_by_session,
     list_relay_logs,
+    list_reports,
+    list_reports_by_session,
     list_segment_summaries,
     list_segment_summaries_by_session,
     list_sessions,
@@ -184,6 +196,56 @@ class SegmentSummaryRead(BaseModel):
     start_time: int | None = None
     end_time: int | None = None
     score: float | None = None
+    created_at: int
+
+
+class KeywordRead(BaseModel):
+    """关键词输出结构。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    session_id: int
+    keyword_sets: str
+    created_at: int
+
+
+class QuizItemRead(BaseModel):
+    """小测题目输出结构。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    session_id: int
+    type: str | None = None
+    question: str
+    answer: str | None = None
+    explanation: str | None = None
+    created_at: int
+
+
+class KnowledgePointRead(BaseModel):
+    """知识点输出结构。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    session_id: int
+    name: str
+    description: str | None = None
+    difficulty: str | None = None
+    created_at: int
+
+
+class ReportRead(BaseModel):
+    """课后报告输出结构。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    session_id: int
+    content: str | None = None
+    file_path: str | None = None
     created_at: int
 
 
@@ -351,6 +413,34 @@ def _require_question(db: Session, question_id: int):
     if question is None:
         raise _not_found("问题")
     return question
+
+
+def _require_keyword(db: Session, keyword_id: int):
+    keyword = get_keyword_by_id(db, keyword_id)
+    if keyword is None:
+        raise _not_found("关键词")
+    return keyword
+
+
+def _require_quiz_item(db: Session, quiz_item_id: int):
+    quiz_item = get_quiz_item_by_id(db, quiz_item_id)
+    if quiz_item is None:
+        raise _not_found("小测题目")
+    return quiz_item
+
+
+def _require_knowledge_point(db: Session, knowledge_point_id: int):
+    knowledge_point = get_knowledge_point_by_id(db, knowledge_point_id)
+    if knowledge_point is None:
+        raise _not_found("知识点")
+    return knowledge_point
+
+
+def _require_report(db: Session, report_id: int):
+    report = get_report_by_id(db, report_id)
+    if report is None:
+        raise _not_found("课后报告")
+    return report
 
 
 @router.post("/courses")
@@ -583,6 +673,94 @@ def list_session_segment_summaries_endpoint(
         _serialize_models(
             list_segment_summaries_by_session(db, session_id), SegmentSummaryRead
         )
+    )
+
+
+@router.get("/keywords")
+def list_keywords_endpoint(db: Session = Depends(get_db_session)):
+    return _success(_serialize_models(list_keywords(db), KeywordRead))
+
+
+@router.get("/keywords/{keyword_id}")
+def get_keyword_endpoint(keyword_id: int, db: Session = Depends(get_db_session)):
+    keyword = _require_keyword(db, keyword_id)
+    return _success(_serialize_model(keyword, KeywordRead))
+
+
+@router.get("/sessions/{session_id}/keywords")
+def list_session_keywords_endpoint(
+    session_id: int, db: Session = Depends(get_db_session)
+):
+    _require_session(db, session_id)
+    return _success(
+        _serialize_models(list_keywords_by_session(db, session_id), KeywordRead)
+    )
+
+
+@router.get("/quiz-items")
+def list_quiz_items_endpoint(db: Session = Depends(get_db_session)):
+    return _success(_serialize_models(list_quiz_items(db), QuizItemRead))
+
+
+@router.get("/quiz-items/{quiz_item_id}")
+def get_quiz_item_endpoint(quiz_item_id: int, db: Session = Depends(get_db_session)):
+    quiz_item = _require_quiz_item(db, quiz_item_id)
+    return _success(_serialize_model(quiz_item, QuizItemRead))
+
+
+@router.get("/sessions/{session_id}/quiz-items")
+def list_session_quiz_items_endpoint(
+    session_id: int, db: Session = Depends(get_db_session)
+):
+    _require_session(db, session_id)
+    return _success(
+        _serialize_models(list_quiz_items_by_session(db, session_id), QuizItemRead)
+    )
+
+
+@router.get("/knowledge-points")
+def list_knowledge_points_endpoint(db: Session = Depends(get_db_session)):
+    return _success(_serialize_models(list_knowledge_points(db), KnowledgePointRead))
+
+
+@router.get("/knowledge-points/{knowledge_point_id}")
+def get_knowledge_point_endpoint(
+    knowledge_point_id: int, db: Session = Depends(get_db_session)
+):
+    knowledge_point = _require_knowledge_point(db, knowledge_point_id)
+    return _success(_serialize_model(knowledge_point, KnowledgePointRead))
+
+
+@router.get("/sessions/{session_id}/knowledge-points")
+def list_session_knowledge_points_endpoint(
+    session_id: int, db: Session = Depends(get_db_session)
+):
+    _require_session(db, session_id)
+    return _success(
+        _serialize_models(
+            list_knowledge_points_by_session(db, session_id), KnowledgePointRead
+        )
+    )
+
+
+@router.get("/reports")
+def list_reports_endpoint(db: Session = Depends(get_db_session)):
+    return _success(_serialize_models(list_reports(db), ReportRead))
+
+
+@router.get("/reports/{report_id}")
+def get_report_endpoint(report_id: int, db: Session = Depends(get_db_session)):
+    report = _require_report(db, report_id)
+    return _success(_serialize_model(report, ReportRead))
+
+
+@router.get("/sessions/{session_id}/reports")
+def list_session_reports_endpoint(
+    session_id: int, db: Session = Depends(get_db_session)
+):
+    _require_session(db, session_id)
+    return _success(
+        _serialize_models(list_reports_by_session(db, session_id), ReportRead)
     )
 
 

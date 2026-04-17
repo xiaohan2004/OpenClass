@@ -56,6 +56,54 @@ export function fetchQuestionById(questionId) {
   return apiRequest(`/api/questions/${questionId}`)
 }
 
+export function fetchKeywords() {
+  return apiRequest('/api/keywords')
+}
+
+export function fetchKeywordById(keywordId) {
+  return apiRequest(`/api/keywords/${keywordId}`)
+}
+
+export function fetchSessionKeywords(sessionId) {
+  return apiRequest(`/api/sessions/${sessionId}/keywords`)
+}
+
+export function fetchQuizItems() {
+  return apiRequest('/api/quiz-items')
+}
+
+export function fetchQuizItemById(quizItemId) {
+  return apiRequest(`/api/quiz-items/${quizItemId}`)
+}
+
+export function fetchSessionQuizItems(sessionId) {
+  return apiRequest(`/api/sessions/${sessionId}/quiz-items`)
+}
+
+export function fetchKnowledgePoints() {
+  return apiRequest('/api/knowledge-points')
+}
+
+export function fetchKnowledgePointById(knowledgePointId) {
+  return apiRequest(`/api/knowledge-points/${knowledgePointId}`)
+}
+
+export function fetchSessionKnowledgePoints(sessionId) {
+  return apiRequest(`/api/sessions/${sessionId}/knowledge-points`)
+}
+
+export function fetchReports() {
+  return apiRequest('/api/reports')
+}
+
+export function fetchReportById(reportId) {
+  return apiRequest(`/api/reports/${reportId}`)
+}
+
+export function fetchSessionReports(sessionId) {
+  return apiRequest(`/api/sessions/${sessionId}/reports`)
+}
+
 export function fetchStatsTotals() {
   return apiRequest('/api/stats/totals')
 }

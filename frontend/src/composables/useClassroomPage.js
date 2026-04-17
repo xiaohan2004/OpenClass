@@ -637,7 +637,7 @@ export function useClassroomPage() {
       }
     }
 
-    if (type === 'audio_out') {
+    if (type === 'tts_out') {
       if (data?.audio_url) {
         const audio = new Audio(data.audio_url)
         void audio.play().catch(() => {

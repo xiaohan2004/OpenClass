@@ -109,7 +109,7 @@ async def handle_audio(
             # 通过 WS 发回前端
             await safe_ws.send_json(
                 {
-                    "type": "audio_out",
+                    "type": "tts_out",
                     "data": {
                         "audio_url": audio_url,
                         "text": question_to_ask,
