@@ -238,3 +238,28 @@ def generate_quiz(context: str) -> str:
     except Exception as e:
         logger.error("小测生成失败: %s", e)
         raise
+
+
+def generate_report(material: str) -> str:
+    """
+    根据课堂材料生成最终 HTML 报告。
+
+    Args:
+        material: 课堂相关材料（转写/笔记/摘要）
+
+    Returns:
+        生成的 HTML 报告字符串
+    """
+    try:
+        settings = get_settings()
+        system_prompt = _resolve_string_setting(
+            getattr(settings, "system_prompt_report", None),
+            SYSTEM_PROMPT_REPORT,
+        )
+        return generate_with_prompt(
+            context=material,
+            system_prompt=system_prompt,
+        )
+    except Exception as e:
+        logger.error("报告生成失败: %s", e)
+        raise

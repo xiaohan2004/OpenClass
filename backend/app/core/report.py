@@ -7,7 +7,7 @@ import re
 from functools import partial
 from typing import Callable
 
-from app.services.llm import generate_with_prompt
+from app.services.llm import generate_with_prompt, generate_report
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,11 @@ class ReportProcessor:
     def __init__(self, agent: LectureReportAgent | None = None):
         self._agent = agent or create_default_lecture_report_agent()
 
-    def generate_report(self, material: str, max_iters: int = 1) -> str:
+    def generate_report(self, material: str) -> str:
+        """根据课堂材料生成最终 HTML 报告（一次性生成）。"""
+        return generate_report(material)
+
+    def generate_report_with_agent(self, material: str, max_iters: int = 1) -> str:
         """根据课堂材料生成最终 HTML 报告。"""
         return self._agent.run(material=material, max_iters=max_iters)
 

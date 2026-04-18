@@ -86,7 +86,7 @@
 
           <div class="settings-fields">
             <label v-for="field in card.fields" :key="field.key" class="settings-field">
-              <div class="settings-field__label-row">
+              <div v-if="field.kind !== 'longtext-modal'" class="settings-field__label-row">
                 <span>{{ field.displayLabel }}</span>
                 <small v-if="field.sensitive && field.hasValue" class="settings-sensitive">已配置</small>
               </div>

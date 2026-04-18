@@ -237,6 +237,15 @@ async def _background_tasks_processing(
                 asyncio.to_thread(quiz_processor.generate_quiz_item, context_text),
                 return_exceptions=True,
             )
+            # 后台执行algorithm提取关键词（不阻塞主流程）
+            asyncio.create_task(
+                asyncio.to_thread(
+                    _background_keyword_extraction,
+                    context.session_id,
+                    context_text,
+                    transcript_ids,
+                )
+            )
 
             # 发送结果到前端
             if keywords_result and not isinstance(keywords_result, Exception):
@@ -427,3 +436,21 @@ def _persist_quiz_item(
             link_quiz_item_to_transcript(db, quiz_item.id, transcript_id)
 
         return quiz_item.id
+
+def _background_keyword_extraction(
+    session_id: int,
+    context_text: str,
+    transcript_ids: list[int],
+) -> None:
+    """后台执行关键词提取（不阻塞主流程）"""
+    keywords_result = keyword_processor.extract_keywords_algorithm(context_text)
+
+    if keywords_result:
+        logger.info("后台关键词提取结果: %s", keywords_result)
+
+        # 持久化关键词
+        _persist_keywords(
+            session_id,
+            keywords_result,
+            transcript_ids,
+        )

@@ -37,6 +37,7 @@ const cardDefs = [
             { key: 'max_questions', label: '问题队列上限', kind: 'number', min: 1 },
             { key: 'recent_lecture_window', label: '近期讲解窗口', kind: 'number', min: 1 },
             { key: 'history_summary_window', label: '历史总结窗口', kind: 'number', min: 1 },
+            { key: 'keyword_knowledge_quiz_trigger_interval', label: '关键词/知识点/小测触发间隔', kind: 'number', min: 1 },
             { key: 'settings_refresh_interval_seconds', label: '设置热更新间隔(秒)', kind: 'number', min: 0.5, step: 0.5 }
         ]
     },
@@ -71,7 +72,9 @@ const cardDefs = [
             { key: 'tts_model', label: 'TTS 模型', kind: 'text' },
             { key: 'tts_base_url', label: 'TTS 服务地址', kind: 'text' },
             { key: 'tts_voice', label: 'TTS 音色', kind: 'text' },
-            { key: 'tts_language_type', label: 'TTS 语言', kind: 'text' }
+            { key: 'tts_language_type', label: 'TTS 语言', kind: 'text' },
+            { key: 'tts_instructions', label: 'TTS 指令', kind: 'longtext-modal' },
+            { key: 'tts_optimize_instructions', label: 'TTS 自动优化指令', kind: 'boolean' }
         ]
     },
     {
@@ -81,7 +84,11 @@ const cardDefs = [
         column: 'left',
         fields: [
             { key: 'system_prompt_question', label: '提问提示词', kind: 'longtext-modal' },
-            { key: 'system_prompt_segment_summary', label: '总结提示词', kind: 'longtext-modal' }
+            { key: 'system_prompt_segment_summary', label: '总结提示词', kind: 'longtext-modal' },
+            { key: 'system_prompt_keywords', label: '关键词提示词', kind: 'longtext-modal' },
+            { key: 'system_prompt_knowledge', label: '知识点提示词', kind: 'longtext-modal' },
+            { key: 'system_prompt_quiz', label: '小测提示词', kind: 'longtext-modal' },
+            { key: 'system_prompt_report', label: '报告提示词', kind: 'longtext-modal' }
         ]
     }
 ]

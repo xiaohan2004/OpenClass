@@ -1013,7 +1013,7 @@ async def _generate_report_background(report_id: int, session_id: int, material:
     try:
         logger.info("开始生成课后报告 (report_id=%d)", report_id)
         processor = ReportProcessor()
-        html_content = processor.generate_report(material=material, max_iters=1)
+        html_content = processor.generate_report(material=material)
 
         # 生成 PDF 文件
         pdf_file_path = await asyncio.to_thread(
