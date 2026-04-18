@@ -16,6 +16,7 @@ from app.config_defaults import (
     DEFAULT_SYSTEM_PROMPT_QUIZ,
     DEFAULT_SYSTEM_PROMPT_QUESTION,
     DEFAULT_SYSTEM_PROMPT_SEGMENT_SUMMARY,
+    DEFAULT_SYSTEM_PROMPT_REPORT,
 )
 from app.db import get_engine
 from app.db.config_store import load_settings_dict
@@ -53,6 +54,7 @@ class Settings(BaseModel):
     settings_refresh_interval_seconds: float = DEFAULT_SETTINGS_VALUES[
         "settings_refresh_interval_seconds"
     ]
+    keyword_knowledge_quiz_trigger_interval: int = DEFAULT_KEYWORD_KNOWLEDGE_QUIZ_TRIGGER_INTERVAL
 
     # 数据库配置
     database_url: str = DEFAULT_SETTINGS_VALUES["database_url"]
@@ -66,7 +68,7 @@ class Settings(BaseModel):
     system_prompt_keywords: str = DEFAULT_SETTINGS_VALUES["system_prompt_keywords"]
     system_prompt_knowledge: str = DEFAULT_SETTINGS_VALUES["system_prompt_knowledge"]
     system_prompt_quiz: str = DEFAULT_SETTINGS_VALUES["system_prompt_quiz"]
-
+    system_prompt_report: str = DEFAULT_SETTINGS_VALUES["system_prompt_report"]
     # ASR 配置
     asr_model: str = DEFAULT_SETTINGS_VALUES["asr_model"]
     asr_base_url: str = DEFAULT_SETTINGS_VALUES["asr_base_url"]
@@ -134,3 +136,4 @@ SYSTEM_PROMPT_SEGMENT_SUMMARY = DEFAULT_SYSTEM_PROMPT_SEGMENT_SUMMARY
 SYSTEM_PROMPT_KEYWORDS = DEFAULT_SYSTEM_PROMPT_KEYWORDS
 SYSTEM_PROMPT_KNOWLEDGE = DEFAULT_SYSTEM_PROMPT_KNOWLEDGE
 SYSTEM_PROMPT_QUIZ = DEFAULT_SYSTEM_PROMPT_QUIZ
+SYSTEM_PROMPT_REPORT = DEFAULT_SYSTEM_PROMPT_REPORT

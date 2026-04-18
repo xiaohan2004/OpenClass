@@ -180,13 +180,20 @@
             </div>
 
             <div class="quiz-drawer__body" v-if="currentQuizItem">
-              <p class="quiz-row"><strong>题型：</strong>{{ currentQuizItem.type }}</p>
-              <p class="quiz-row"><strong>题目：</strong>{{ currentQuizItem.question }}</p>
-              <p class="quiz-row" v-if="currentQuizItem.answer">
-                <strong>答案：</strong>{{ currentQuizItem.answer }}
-              </p>
-              <p class="quiz-row" v-if="currentQuizItem.explanation">
-                <strong>解释：</strong>{{ currentQuizItem.explanation }}</p>
+                <p class="quiz-row"><strong>题目：</strong>{{ currentQuizItem.question }}</p>
+                <template v-if="showQuizAnswer">
+                  <p class="quiz-row" v-if="currentQuizItem.answer">
+                    <strong>答案：</strong>{{ currentQuizItem.answer }}
+                  </p>
+                  <p class="quiz-row" v-if="currentQuizItem.explanation">
+                    <strong>解释：</strong>{{ currentQuizItem.explanation }}</p>
+                </template>
+                <button
+                  v-if="currentQuizItem.answer || currentQuizItem.explanation"
+                  class="primary-button"
+                  style="margin-top: 12px;"
+                  @click="showQuizAnswer = !showQuizAnswer"
+                >{{ showQuizAnswer ? '收起答案' : '显示答案' }}</button>
             </div>
             <p v-else class="empty-text">暂无小测题目</p>
 
@@ -372,6 +379,9 @@
 
 <script setup>
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+
+// 小测答案显示控制
+const showQuizAnswer = ref(false)
 import MoreLayout from './components/MoreLayout.vue'
 import { useClassroomPage } from './composables/useClassroomPage'
 
@@ -480,6 +490,11 @@ const {
   endCurrentSession,
   clearWsTrafficLogs
 } = useClassroomPage()
+
+// 切换题目时自动隐藏答案
+watch(currentQuizItem, () => {
+  showQuizAnswer.value = false
+})
 
 watch(selectedSessionId, () => {
   isQuestionHistoryExpanded.value = false

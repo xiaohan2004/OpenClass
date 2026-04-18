@@ -230,9 +230,14 @@ export function useClassroomPage() {
   )
 
   const currentDifficultyLevel = computed(() => {
-    const rawDifficulty = String(latestKnowledgePoint.value?.difficulty || '').trim().toLowerCase()
+    const latestItem = latestKnowledgePoint.value
+    if (!latestItem) {
+      return 'unknown'
+    }
+
+    const rawDifficulty = String(latestItem.difficulty || '').trim().toLowerCase()
     if (!rawDifficulty) {
-      return 'medium'
+      return 'unknown'
     }
     if (rawDifficulty.includes('hard') || rawDifficulty.includes('难')) {
       return 'hard'
@@ -249,6 +254,9 @@ export function useClassroomPage() {
     }
     if (currentDifficultyLevel.value === 'easy') {
       return '易'
+    }
+    if (currentDifficultyLevel.value === 'unknown') {
+      return '未知'
     }
     return '中'
   })
@@ -1522,14 +1530,14 @@ export function useClassroomPage() {
       const buttonClickTs = Math.floor(Date.now() / 1000)
       await endSession(selectedSessionId.value, buttonClickTs)
 
-      // try {
-      //   await generateSessionReport(selectedSessionId.value)
-      //   appendLog(`${formatTime(Math.floor(Date.now() / 1000))} 已触发课后报告生成`) 
-      // } catch (reportError) {
-      //   appendLog(
-      //     `${formatTime(Math.floor(Date.now() / 1000))} 课后报告触发失败：${reportError instanceof Error ? reportError.message : '未知错误'}`
-      //   )
-      // }
+      try {
+        await generateSessionReport(selectedSessionId.value)
+        appendLog(`${formatTime(Math.floor(Date.now() / 1000))} 已触发课后报告生成`) 
+      } catch (reportError) {
+        appendLog(
+          `${formatTime(Math.floor(Date.now() / 1000))} 课后报告触发失败：${reportError instanceof Error ? reportError.message : '未知错误'}`
+        )
+      }
 
       await stopRecordingLoop()
       scheduleWsClose()

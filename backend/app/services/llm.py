@@ -14,6 +14,7 @@ from app.config import (
     SYSTEM_PROMPT_SEGMENT_SUMMARY,
     SYSTEM_PROMPT_KNOWLEDGE,
     SYSTEM_PROMPT_QUIZ,
+    SYSTEM_PROMPT_REPORT,
     get_settings,
 )
 from app.services.metrics import record_service_usage
