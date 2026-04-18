@@ -85,7 +85,7 @@
         </section>
 
         <section class="sidebar-group">
-          <p class="sidebar-title">实时摘要</p>
+          <p class="sidebar-title">课堂摘要</p>
           <div ref="summaryFeed" class="summary-list">
             <p v-for="summary in summaries" :key="summary.id" class="summary-item">
               <span>{{ summary.time }}</span>
