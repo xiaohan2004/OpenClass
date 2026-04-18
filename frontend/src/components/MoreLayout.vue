@@ -33,6 +33,10 @@
             v-else-if="activeView === 'logs'"
           />
 
+          <CoursePage
+            v-else-if="activeView === 'course'"
+          />
+
           <SettingsPage
             v-else
           />
@@ -54,6 +58,7 @@
 
 <script setup>
 import { ref } from 'vue'
+import CoursePage from './more-overlay/CoursePage.vue'
 import LogsPage from './more-overlay/LogsPage.vue'
 import SettingsPage from './more-overlay/SettingsPage.vue'
 import StatsPage from './more-overlay/StatsPage.vue'

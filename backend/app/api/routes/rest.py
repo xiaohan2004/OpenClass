@@ -43,19 +43,24 @@ from app.db.crud import (
     list_knowledge_points_by_session,
     list_questions,
     list_questions_by_session,
+    list_question_transcript_maps,
     list_quiz_items,
     list_quiz_items_by_session,
+    list_quiz_item_transcript_maps,
     list_relay_logs,
     list_reports,
     list_reports_by_session,
     list_segment_summaries,
     list_segment_summaries_by_session,
+    list_segment_summary_transcript_maps,
     list_sessions,
     list_stats_dailies,
     list_stats_hourlies,
     list_stats_totals,
     list_transcripts,
     list_transcripts_by_session,
+    list_keyword_transcript_maps,
+    list_knowledge_point_transcript_maps,
     upsert_settings,
     update_course,
     update_question,
@@ -259,6 +264,34 @@ class ReportRead(BaseModel):
     created_at: int
 
 
+class WithTranscriptSegments(BaseModel):
+    """包含关联转写分段信息的输出结构。"""
+
+    transcript_ids: list[int] = []
+    transcript_segments: list[TranscriptRead] = []
+    transcript_joined_text: str = ""
+
+
+class QuestionDetailRead(QuestionRead, WithTranscriptSegments):
+    """问题详情输出结构。"""
+
+
+class SegmentSummaryDetailRead(SegmentSummaryRead, WithTranscriptSegments):
+    """分段小结详情输出结构。"""
+
+
+class KeywordDetailRead(KeywordRead, WithTranscriptSegments):
+    """关键词详情输出结构。"""
+
+
+class QuizItemDetailRead(QuizItemRead, WithTranscriptSegments):
+    """小测题目详情输出结构。"""
+
+
+class KnowledgePointDetailRead(KnowledgePointRead, WithTranscriptSegments):
+    """知识点详情输出结构。"""
+
+
 class RelayLogRead(BaseModel):
     """请求日志输出结构。
 
@@ -402,6 +435,85 @@ def _serialize_settings(db: Session) -> dict[str, Any]:
         )
 
     return SettingsRead(items=items).model_dump()
+
+
+def _serialize_with_related_transcripts(
+    db: Session,
+    model: Any,
+    schema: type[BaseModel],
+    mapping_loader,
+    entity_key: str,
+) -> dict[str, Any]:
+    """序列化模型并附带关联转写分段。"""
+    serialized = _serialize_model(model, schema)
+
+    mapping_query = {entity_key: getattr(model, "id", None)}
+    mappings = mapping_loader(db, **mapping_query)
+
+    transcript_id_set: set[int] = {
+        int(item.transcript_id)
+        for item in mappings
+        if getattr(item, "transcript_id", None) is not None
+    }
+    transcript_ids = sorted(transcript_id_set)
+
+    transcript_objects = [
+        transcript
+        for transcript_id in transcript_ids
+        for transcript in [get_transcript_by_id(db, transcript_id)]
+        if transcript is not None
+    ]
+
+    transcript_objects.sort(
+        key=lambda transcript: (
+            (
+                transcript.start_time
+                if transcript.start_time is not None
+                else transcript.created_at
+            ),
+            transcript.created_at,
+            transcript.seq if transcript.seq is not None else 0,
+            transcript.id,
+        )
+    )
+
+    transcript_segments = [
+        _serialize_model(transcript, TranscriptRead)
+        for transcript in transcript_objects
+    ]
+
+    transcript_joined_text = "\n".join(
+        transcript.text.strip()
+        for transcript in transcript_objects
+        if isinstance(transcript.text, str) and transcript.text.strip()
+    )
+
+    return {
+        **serialized,
+        "transcript_ids": transcript_ids,
+        "transcript_segments": transcript_segments,
+        "transcript_joined_text": transcript_joined_text,
+    }
+
+
+def _serialize_models_with_related_transcripts(
+    db: Session,
+    models: list[Any],
+    schema: type[BaseModel],
+    mapping_loader,
+    entity_key: str,
+) -> list[dict[str, Any]]:
+    """批量序列化模型并附带关联转写分段。"""
+    return [
+        _serialize_with_related_transcripts(
+            db,
+            model,
+            schema,
+            mapping_loader,
+            entity_key,
+        )
+        for model in models
+    ]
 
 
 def _require_course(db: Session, course_id: int):
@@ -571,12 +683,20 @@ def start_session_endpoint(
     payload: SessionStartPayload | None = None,
     db: Session = Depends(get_db_session),
 ):
-    _require_session(db, session_id)
+    session_record = _require_session(db, session_id)
     start_time = (
         now_ts()
         if payload is None or payload.start_time is None
         else payload.start_time
     )
+
+    # 已有开始时间时，不允许用更晚的时间覆盖。
+    if (
+        session_record.start_time is not None
+        and start_time > session_record.start_time
+    ):
+        return _success({}, "课堂已开始")
+
     update_session(db, session_id, start_time=start_time)
     return _success({}, "课堂已开始")
 
@@ -593,10 +713,18 @@ def end_session_endpoint(
     payload: SessionEndPayload | None = None,
     db: Session = Depends(get_db_session),
 ):
-    _require_session(db, session_id)
+    session_record = _require_session(db, session_id)
     end_time = (
         now_ts() if payload is None or payload.end_time is None else payload.end_time
     )
+
+    # 已有结束时间时，不允许用更早的时间覆盖。
+    if (
+        session_record.end_time is not None
+        and end_time < session_record.end_time
+    ):
+        return _success({}, "课堂已结束")
+
     close_session(db, session_id, end_time=end_time)
     return _success({}, "课堂已结束")
 
@@ -626,13 +754,29 @@ def list_session_transcripts_endpoint(
 
 @router.get("/questions")
 def list_questions_endpoint(db: Session = Depends(get_db_session)):
-    return _success(_serialize_models(list_questions(db), QuestionRead))
+    return _success(
+        _serialize_models_with_related_transcripts(
+            db,
+            list_questions(db),
+            QuestionRead,
+            list_question_transcript_maps,
+            "question_id",
+        )
+    )
 
 
 @router.get("/questions/{question_id}")
 def get_question_endpoint(question_id: int, db: Session = Depends(get_db_session)):
     question = _require_question(db, question_id)
-    return _success(_serialize_model(question, QuestionRead))
+    return _success(
+        _serialize_with_related_transcripts(
+            db,
+            question,
+            QuestionDetailRead,
+            list_question_transcript_maps,
+            "question_id",
+        )
+    )
 
 
 @router.get("/sessions/{session_id}/questions")
@@ -641,7 +785,13 @@ def list_session_questions_endpoint(
 ):
     _require_session(db, session_id)
     return _success(
-        _serialize_models(list_questions_by_session(db, session_id), QuestionRead)
+        _serialize_models_with_related_transcripts(
+            db,
+            list_questions_by_session(db, session_id),
+            QuestionRead,
+            list_question_transcript_maps,
+            "question_id",
+        )
     )
 
 
@@ -661,7 +811,15 @@ def patch_question_endpoint(
 
 @router.get("/segment-summaries")
 def list_segment_summaries_endpoint(db: Session = Depends(get_db_session)):
-    return _success(_serialize_models(list_segment_summaries(db), SegmentSummaryRead))
+    return _success(
+        _serialize_models_with_related_transcripts(
+            db,
+            list_segment_summaries(db),
+            SegmentSummaryRead,
+            list_segment_summary_transcript_maps,
+            "segment_summary_id",
+        )
+    )
 
 
 @router.get("/segment-summaries/{summary_id}")
@@ -671,7 +829,15 @@ def get_segment_summary_endpoint(
     summary = get_segment_summary_by_id(db, summary_id)
     if summary is None:
         raise _not_found("分段小结")
-    return _success(_serialize_model(summary, SegmentSummaryRead))
+    return _success(
+        _serialize_with_related_transcripts(
+            db,
+            summary,
+            SegmentSummaryDetailRead,
+            list_segment_summary_transcript_maps,
+            "segment_summary_id",
+        )
+    )
 
 
 @router.get("/sessions/{session_id}/segment-summaries")
@@ -680,21 +846,41 @@ def list_session_segment_summaries_endpoint(
 ):
     _require_session(db, session_id)
     return _success(
-        _serialize_models(
-            list_segment_summaries_by_session(db, session_id), SegmentSummaryRead
+        _serialize_models_with_related_transcripts(
+            db,
+            list_segment_summaries_by_session(db, session_id),
+            SegmentSummaryRead,
+            list_segment_summary_transcript_maps,
+            "segment_summary_id",
         )
     )
 
 
 @router.get("/keywords")
 def list_keywords_endpoint(db: Session = Depends(get_db_session)):
-    return _success(_serialize_models(list_keywords(db), KeywordRead))
+    return _success(
+        _serialize_models_with_related_transcripts(
+            db,
+            list_keywords(db),
+            KeywordRead,
+            list_keyword_transcript_maps,
+            "keyword_id",
+        )
+    )
 
 
 @router.get("/keywords/{keyword_id}")
 def get_keyword_endpoint(keyword_id: int, db: Session = Depends(get_db_session)):
     keyword = _require_keyword(db, keyword_id)
-    return _success(_serialize_model(keyword, KeywordRead))
+    return _success(
+        _serialize_with_related_transcripts(
+            db,
+            keyword,
+            KeywordDetailRead,
+            list_keyword_transcript_maps,
+            "keyword_id",
+        )
+    )
 
 
 @router.get("/sessions/{session_id}/keywords")
@@ -703,19 +889,41 @@ def list_session_keywords_endpoint(
 ):
     _require_session(db, session_id)
     return _success(
-        _serialize_models(list_keywords_by_session(db, session_id), KeywordRead)
+        _serialize_models_with_related_transcripts(
+            db,
+            list_keywords_by_session(db, session_id),
+            KeywordRead,
+            list_keyword_transcript_maps,
+            "keyword_id",
+        )
     )
 
 
 @router.get("/quiz-items")
 def list_quiz_items_endpoint(db: Session = Depends(get_db_session)):
-    return _success(_serialize_models(list_quiz_items(db), QuizItemRead))
+    return _success(
+        _serialize_models_with_related_transcripts(
+            db,
+            list_quiz_items(db),
+            QuizItemRead,
+            list_quiz_item_transcript_maps,
+            "quiz_item_id",
+        )
+    )
 
 
 @router.get("/quiz-items/{quiz_item_id}")
 def get_quiz_item_endpoint(quiz_item_id: int, db: Session = Depends(get_db_session)):
     quiz_item = _require_quiz_item(db, quiz_item_id)
-    return _success(_serialize_model(quiz_item, QuizItemRead))
+    return _success(
+        _serialize_with_related_transcripts(
+            db,
+            quiz_item,
+            QuizItemDetailRead,
+            list_quiz_item_transcript_maps,
+            "quiz_item_id",
+        )
+    )
 
 
 @router.get("/sessions/{session_id}/quiz-items")
@@ -724,13 +932,27 @@ def list_session_quiz_items_endpoint(
 ):
     _require_session(db, session_id)
     return _success(
-        _serialize_models(list_quiz_items_by_session(db, session_id), QuizItemRead)
+        _serialize_models_with_related_transcripts(
+            db,
+            list_quiz_items_by_session(db, session_id),
+            QuizItemRead,
+            list_quiz_item_transcript_maps,
+            "quiz_item_id",
+        )
     )
 
 
 @router.get("/knowledge-points")
 def list_knowledge_points_endpoint(db: Session = Depends(get_db_session)):
-    return _success(_serialize_models(list_knowledge_points(db), KnowledgePointRead))
+    return _success(
+        _serialize_models_with_related_transcripts(
+            db,
+            list_knowledge_points(db),
+            KnowledgePointRead,
+            list_knowledge_point_transcript_maps,
+            "knowledge_point_id",
+        )
+    )
 
 
 @router.get("/knowledge-points/{knowledge_point_id}")
@@ -738,7 +960,15 @@ def get_knowledge_point_endpoint(
     knowledge_point_id: int, db: Session = Depends(get_db_session)
 ):
     knowledge_point = _require_knowledge_point(db, knowledge_point_id)
-    return _success(_serialize_model(knowledge_point, KnowledgePointRead))
+    return _success(
+        _serialize_with_related_transcripts(
+            db,
+            knowledge_point,
+            KnowledgePointDetailRead,
+            list_knowledge_point_transcript_maps,
+            "knowledge_point_id",
+        )
+    )
 
 
 @router.get("/sessions/{session_id}/knowledge-points")
@@ -747,8 +977,12 @@ def list_session_knowledge_points_endpoint(
 ):
     _require_session(db, session_id)
     return _success(
-        _serialize_models(
-            list_knowledge_points_by_session(db, session_id), KnowledgePointRead
+        _serialize_models_with_related_transcripts(
+            db,
+            list_knowledge_points_by_session(db, session_id),
+            KnowledgePointRead,
+            list_knowledge_point_transcript_maps,
+            "knowledge_point_id",
         )
     )
 
@@ -872,7 +1106,7 @@ def _build_report_material(
         parts.append("# 老师讲课原文（可能有转译错误）\n\n")
         for transcript in transcripts:
             parts.append(f"{transcript.text}")
-        parts.append("\n\n") 
+        parts.append("\n\n")
 
     # 4. 分段小结（从旧到新）
     summaries = list_segment_summaries_by_session(db, session_id)

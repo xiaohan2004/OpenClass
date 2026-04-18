@@ -32,6 +32,11 @@ from app.db.crud import (
     create_stats_hourly,
     create_stats_total,
     create_transcript,
+    link_keyword_to_transcript,
+    link_knowledge_point_to_transcript,
+    link_question_to_transcript,
+    link_quiz_item_to_transcript,
+    link_segment_summary_to_transcript,
     upsert_stats_daily,
 )
 from app.main import app
@@ -92,15 +97,25 @@ class TestAPI(unittest.TestCase):
                 course_id=course.id,
                 title="第一节：极限",
             )
-            transcript = create_transcript(
+            transcript_old = create_transcript(
                 db,
                 session.id,
-                "这是转写内容",
+                "这是较早转写内容",
                 seq=1,
                 start_time=1712995200,
                 end_time=1712995210,
             )
+            transcript_new = create_transcript(
+                db,
+                session.id,
+                "这是较新转写内容",
+                seq=2,
+                start_time=1712995300,
+                end_time=1712995310,
+            )
             question = create_question(db, session.id, "这里为什么这样做？", score=0.8)
+            link_question_to_transcript(db, question.id, transcript_new.id)
+            link_question_to_transcript(db, question.id, transcript_old.id)
             summary = create_segment_summary(
                 db,
                 session.id,
@@ -109,7 +124,11 @@ class TestAPI(unittest.TestCase):
                 end_time=1712995300,
                 score=0.9,
             )
+            link_segment_summary_to_transcript(db, summary.id, transcript_new.id)
+            link_segment_summary_to_transcript(db, summary.id, transcript_old.id)
             keyword = create_keyword(db, session.id, '["极限", "导数"]')
+            link_keyword_to_transcript(db, keyword.id, transcript_new.id)
+            link_keyword_to_transcript(db, keyword.id, transcript_old.id)
             quiz_item = create_quiz_item(
                 db,
                 session.id,
@@ -118,12 +137,20 @@ class TestAPI(unittest.TestCase):
                 answer="左右极限存在且相等并等于函数值",
                 explanation="连续定义的三要素",
             )
+            link_quiz_item_to_transcript(db, quiz_item.id, transcript_new.id)
+            link_quiz_item_to_transcript(db, quiz_item.id, transcript_old.id)
             knowledge_point = create_knowledge_point(
                 db,
                 session.id,
                 "函数连续",
                 description="函数在某点连续的定义",
                 difficulty="easy",
+            )
+            link_knowledge_point_to_transcript(
+                db, knowledge_point.id, transcript_new.id
+            )
+            link_knowledge_point_to_transcript(
+                db, knowledge_point.id, transcript_old.id
             )
             report = create_report(
                 db,
@@ -152,7 +179,9 @@ class TestAPI(unittest.TestCase):
             return {
                 "course_id": course.id,
                 "session_id": session.id,
-                "transcript_id": transcript.id,
+                "transcript_id": transcript_new.id,
+                "transcript_old_id": transcript_old.id,
+                "transcript_new_id": transcript_new.id,
                 "question_id": question.id,
                 "summary_id": summary.id,
                 "keyword_id": keyword.id,
@@ -316,6 +345,18 @@ class TestAPI(unittest.TestCase):
         )
         self.assertEqual(get_started_response.json()["data"]["start_time"], 1712995200)
 
+        # start_time 不应被更晚时间覆盖。
+        late_start_response = self.request(
+            "POST",
+            f"/api/sessions/{created_session['id']}/start",
+            json={"start_time": 1712998800},
+        )
+        self.assertEqual(late_start_response.status_code, 200)
+        get_started_after_late = self.request(
+            "GET", f"/api/sessions/{created_session['id']}"
+        )
+        self.assertEqual(get_started_after_late.json()["data"]["start_time"], 1712995200)
+
         pause_response = self.request(
             "POST", f"/api/sessions/{created_session['id']}/pause"
         )
@@ -335,6 +376,18 @@ class TestAPI(unittest.TestCase):
         )
         self.assertEqual(get_ended_response.json()["data"]["end_time"], 1713002400)
 
+        # end_time 不应被更早时间覆盖。
+        early_end_response = self.request(
+            "POST",
+            f"/api/sessions/{created_session['id']}/end",
+            json={"end_time": 1713000000},
+        )
+        self.assertEqual(early_end_response.status_code, 200)
+        get_ended_after_early = self.request(
+            "GET", f"/api/sessions/{created_session['id']}"
+        )
+        self.assertEqual(get_ended_after_early.json()["data"]["end_time"], 1713002400)
+
         delete_response = self.request(
             "DELETE", f"/api/sessions/{created_session['id']}"
         )
@@ -345,21 +398,22 @@ class TestAPI(unittest.TestCase):
         """转写、问题、小结、日志与统计接口应可查询。"""
         transcript_response = self.request("GET", "/api/transcripts")
         self.assertEqual(transcript_response.status_code, 200)
-        self.assertEqual(
-            transcript_response.json()["data"][0]["id"], self.seed_data["transcript_id"]
+        self.assertIn(
+            self.seed_data["transcript_id"],
+            [item["id"] for item in transcript_response.json()["data"]],
         )
 
         transcript_detail = self.request(
             "GET", f"/api/transcripts/{self.seed_data['transcript_id']}"
         )
         self.assertEqual(transcript_detail.status_code, 200)
-        self.assertEqual(transcript_detail.json()["data"]["text"], "这是转写内容")
+        self.assertEqual(transcript_detail.json()["data"]["text"], "这是较新转写内容")
 
         transcript_by_session = self.request(
             "GET", f"/api/sessions/{self.seed_data['session_id']}/transcripts"
         )
         self.assertEqual(transcript_by_session.status_code, 200)
-        self.assertEqual(len(transcript_by_session.json()["data"]), 1)
+        self.assertEqual(len(transcript_by_session.json()["data"]), 2)
 
         questions_response = self.request("GET", "/api/questions")
         self.assertEqual(questions_response.status_code, 200)
@@ -381,6 +435,14 @@ class TestAPI(unittest.TestCase):
         )
         self.assertEqual(question_by_session.status_code, 200)
         self.assertEqual(len(question_by_session.json()["data"]), 1)
+        self.assertEqual(
+            question_by_session.json()["data"][0]["transcript_ids"],
+            [self.seed_data["transcript_old_id"], self.seed_data["transcript_new_id"]],
+        )
+        self.assertEqual(
+            question_by_session.json()["data"][0]["transcript_joined_text"],
+            "这是较早转写内容\n这是较新转写内容",
+        )
 
         summaries_response = self.request("GET", "/api/segment-summaries")
         self.assertEqual(summaries_response.status_code, 200)
@@ -399,6 +461,14 @@ class TestAPI(unittest.TestCase):
         )
         self.assertEqual(summary_by_session.status_code, 200)
         self.assertEqual(len(summary_by_session.json()["data"]), 1)
+        self.assertEqual(
+            summary_by_session.json()["data"][0]["transcript_ids"],
+            [self.seed_data["transcript_old_id"], self.seed_data["transcript_new_id"]],
+        )
+        self.assertEqual(
+            summary_by_session.json()["data"][0]["transcript_joined_text"],
+            "这是较早转写内容\n这是较新转写内容",
+        )
 
         keywords_response = self.request("GET", "/api/keywords")
         self.assertEqual(keywords_response.status_code, 200)
@@ -417,6 +487,14 @@ class TestAPI(unittest.TestCase):
         )
         self.assertEqual(keyword_by_session.status_code, 200)
         self.assertEqual(len(keyword_by_session.json()["data"]), 1)
+        self.assertEqual(
+            keyword_by_session.json()["data"][0]["transcript_ids"],
+            [self.seed_data["transcript_old_id"], self.seed_data["transcript_new_id"]],
+        )
+        self.assertEqual(
+            keyword_by_session.json()["data"][0]["transcript_joined_text"],
+            "这是较早转写内容\n这是较新转写内容",
+        )
 
         quiz_items_response = self.request("GET", "/api/quiz-items")
         self.assertEqual(quiz_items_response.status_code, 200)
@@ -436,6 +514,14 @@ class TestAPI(unittest.TestCase):
         )
         self.assertEqual(quiz_item_by_session.status_code, 200)
         self.assertEqual(len(quiz_item_by_session.json()["data"]), 1)
+        self.assertEqual(
+            quiz_item_by_session.json()["data"][0]["transcript_ids"],
+            [self.seed_data["transcript_old_id"], self.seed_data["transcript_new_id"]],
+        )
+        self.assertEqual(
+            quiz_item_by_session.json()["data"][0]["transcript_joined_text"],
+            "这是较早转写内容\n这是较新转写内容",
+        )
 
         knowledge_points_response = self.request("GET", "/api/knowledge-points")
         self.assertEqual(knowledge_points_response.status_code, 200)
@@ -456,6 +542,14 @@ class TestAPI(unittest.TestCase):
         )
         self.assertEqual(knowledge_point_by_session.status_code, 200)
         self.assertEqual(len(knowledge_point_by_session.json()["data"]), 1)
+        self.assertEqual(
+            knowledge_point_by_session.json()["data"][0]["transcript_ids"],
+            [self.seed_data["transcript_old_id"], self.seed_data["transcript_new_id"]],
+        )
+        self.assertEqual(
+            knowledge_point_by_session.json()["data"][0]["transcript_joined_text"],
+            "这是较早转写内容\n这是较新转写内容",
+        )
 
         reports_response = self.request("GET", "/api/reports")
         self.assertEqual(reports_response.status_code, 200)
