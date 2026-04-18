@@ -97,14 +97,14 @@
       </aside>
 
       <section class="main-stage">
-        <div class="transcript-stage">
+        <div class="transcript-stage" :class="{ 'is-question-history-open': isQuestionHistoryExpanded }">
           <div ref="transcriptFeed" class="transcript-feed glass-panel">
             <div class="feed-header">
               <p>课堂转录</p>
               <span>实时流式更新中</span>
             </div>
 
-            <div class="transcript-list">
+            <div ref="transcriptListFeed" class="transcript-list">
               <article
                 v-for="(item, index) in transcriptItems"
                 :key="item.id"
@@ -126,6 +126,42 @@
               </article>
               <p v-if="transcriptItems.length === 0" class="empty-text">暂无转录数据</p>
             </div>
+
+            <section class="question-history-stack">
+              <section
+                class="transcript-ask-bar"
+                :class="{ 'is-asking': isQuestionAsking, 'is-expanded': isQuestionHistoryExpanded }"
+                @mousedown.prevent
+                @click="toggleQuestionHistoryExpanded"
+              >
+                <span class="transcript-ask-bar__state">
+                  <span class="transcript-ask-bar__dot"></span>
+                  {{ isQuestionAsking ? '提问中' : '未提问' }}
+                </span>
+                <span class="transcript-ask-bar__text">{{ currentAskingQuestionText }}</span>
+              </section>
+
+              <transition name="knowledge-rise">
+                <section v-if="isQuestionHistoryExpanded" class="question-history-overlay">
+                  <div class="question-history-header">
+                    <span>提问历史</span>
+                    <span>{{ askedQuestionsHistory.length }} 条</span>
+                  </div>
+                  <div ref="questionHistoryListRef" class="question-history-list">
+                    <article
+                      v-for="item in askedQuestionsHistory"
+                      :key="item.id"
+                      class="question-history-item"
+                      :class="{ 'is-current': isQuestionAsking && item.id === currentAskingHistoryId }"
+                    >
+                      <span class="question-history-time">{{ item.askedAtLabel }}</span>
+                      <p>{{ item.text }}</p>
+                    </article>
+                    <p v-if="askedQuestionsHistory.length === 0" class="empty-text">暂无提问历史</p>
+                  </div>
+                </section>
+              </transition>
+            </section>
           </div>
 
           <button
@@ -188,6 +224,7 @@
             <section
               class="ask-status-bar glass-panel"
               :class="{ 'is-expanded': isKnowledgeExpanded }"
+                @mousedown.prevent
               @click="toggleKnowledgeExpanded"
             >
               <div class="knowledge-main-row">
@@ -342,9 +379,15 @@ const moreOverlayOpen = ref(false)
 const showDebugToggle = ref(true)
 const DEBUG_TOGGLE_STORAGE_KEY = 'openclass.ui.showDebugToggle'
 const debugWsListRef = ref(null)
+const questionHistoryListRef = ref(null)
 const wsAutoFollow = ref(true)
 const copyButtonText = ref('复制')
+const isQuestionHistoryExpanded = ref(false)
 let copyFeedbackTimer = null
+
+const toggleQuestionHistoryExpanded = () => {
+  isQuestionHistoryExpanded.value = !isQuestionHistoryExpanded.value
+}
 
 const syncDebugToggleFromStorage = () => {
   let visible = true
@@ -391,11 +434,16 @@ const {
   courseForm,
   sessionForm,
   transcriptFeed,
+  transcriptListFeed,
   summaryFeed,
   queueFeed,
   transcriptItems,
   summaries,
   queuedQuestions,
+  askedQuestionsHistory,
+  isQuestionAsking,
+  currentAskingQuestionText,
+  currentAskingHistoryId,
   wsTrafficLogs,
   sessionStatusLabel,
   canStartSession,
@@ -432,6 +480,37 @@ const {
   endCurrentSession,
   clearWsTrafficLogs
 } = useClassroomPage()
+
+watch(selectedSessionId, () => {
+  isQuestionHistoryExpanded.value = false
+})
+
+watch(isQuestionHistoryExpanded, async (isOpen) => {
+  if (!isOpen) {
+    return
+  }
+  await nextTick()
+  const listEl = questionHistoryListRef.value
+  if (!listEl) {
+    return
+  }
+  listEl.scrollTop = listEl.scrollHeight
+})
+
+watch(
+  () => askedQuestionsHistory.value.length,
+  async () => {
+    if (!isQuestionHistoryExpanded.value) {
+      return
+    }
+    await nextTick()
+    const listEl = questionHistoryListRef.value
+    if (!listEl) {
+      return
+    }
+    listEl.scrollTop = listEl.scrollHeight
+  }
+)
 
 async function copyWsTrafficLogs() {
   const content = wsTrafficLogs.value.join('\n')

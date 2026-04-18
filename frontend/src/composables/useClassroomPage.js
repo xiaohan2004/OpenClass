@@ -52,6 +52,7 @@ export function useClassroomPage() {
   })
 
   const transcriptFeed = ref(null)
+  const transcriptListFeed = ref(null)
   const summaryFeed = ref(null)
   const queueFeed = ref(null)
   let timerTick = null
@@ -80,6 +81,11 @@ export function useClassroomPage() {
   const transcriptItems = ref([])
   const summaries = ref([])
   const queuedQuestions = ref([])
+  const askedQuestionsHistory = ref([])
+  const isQuestionAsking = ref(false)
+  const activeTtsPlayCount = ref(0)
+  const currentAskingQuestion = ref('')
+  const currentAskingHistoryId = ref(null)
   const keywordSnapshots = ref([])
   const knowledgePoints = ref([])
   const quizItems = ref([])
@@ -201,6 +207,15 @@ export function useClassroomPage() {
   })
 
   const micLevelPercent = computed(() => Math.max(0, Math.min(100, Math.round(micLevel.value * 100))))
+
+  const currentAskingQuestionText = computed(() => {
+    if (!isQuestionAsking.value) {
+      return '当前暂未提问'
+    }
+
+    const text = String(currentAskingQuestion.value || '').trim()
+    return text || '当前暂未提问'
+  })
 
   const latestKnowledgePoint = computed(
     () => knowledgePoints.value[knowledgePoints.value.length - 1] || null
@@ -391,6 +406,56 @@ export function useClassroomPage() {
 
   function appendLog(message) {
     logs.value = [message, ...logs.value].slice(0, 80)
+  }
+
+  function appendAskedQuestionHistory(questionText, askedAtTs, questionId = null) {
+    const text = String(questionText || '').trim()
+    if (!text) {
+      return null
+    }
+
+    const askedAt = toUnixSeconds(askedAtTs || Math.floor(Date.now() / 1000))
+    const stableId = questionId ?? `asked-live-${askedAt}-${Math.random().toString(36).slice(2, 8)}`
+    const nextItem = {
+      id: stableId,
+      askedAt,
+      askedAtLabel: formatTime(askedAt),
+      text
+    }
+
+    const exists = askedQuestionsHistory.value.some((item) => item.id === stableId)
+    const merged = exists
+      ? askedQuestionsHistory.value.map((item) => (item.id === stableId ? nextItem : item))
+      : [...askedQuestionsHistory.value, nextItem]
+
+    askedQuestionsHistory.value = merged.sort((a, b) => {
+      if (a.askedAt !== b.askedAt) {
+        return a.askedAt - b.askedAt
+      }
+      return String(a.id).localeCompare(String(b.id))
+    })
+
+    return stableId
+  }
+
+  function beginQuestionAsking(questionText, askedAtTs) {
+    const text = String(questionText || '').trim()
+    if (text) {
+      currentAskingQuestion.value = text
+      currentAskingHistoryId.value = appendAskedQuestionHistory(text, askedAtTs)
+    }
+
+    activeTtsPlayCount.value += 1
+    isQuestionAsking.value = activeTtsPlayCount.value > 0
+  }
+
+  function finishQuestionAsking() {
+    activeTtsPlayCount.value = Math.max(0, activeTtsPlayCount.value - 1)
+    isQuestionAsking.value = activeTtsPlayCount.value > 0
+    if (!isQuestionAsking.value) {
+      currentAskingQuestion.value = ''
+      currentAskingHistoryId.value = null
+    }
   }
 
   async function refreshMicrophones() {
@@ -768,14 +833,40 @@ export function useClassroomPage() {
     }
 
     if (type === 'tts_out') {
+      const ttsText = String(data?.text || '').trim()
       if (data?.audio_url) {
+        beginQuestionAsking(ttsText, now)
+
         const audio = new Audio(data.audio_url)
+        let finished = false
+        const fallbackTimer = window.setTimeout(() => {
+          if (finished) {
+            return
+          }
+          finished = true
+          finishQuestionAsking()
+        }, 30000)
+
+        const finalizeAsking = () => {
+          if (finished) {
+            return
+          }
+          finished = true
+          window.clearTimeout(fallbackTimer)
+          finishQuestionAsking()
+        }
+
+        audio.addEventListener('ended', finalizeAsking, { once: true })
+        audio.addEventListener('error', finalizeAsking, { once: true })
+
         void audio.play().catch(() => {
           appendLog(`${formatTime(now)} 音频自动播放失败`) 
+          finalizeAsking()
         })
       }
-      if (data?.text) {
-        appendLog(`${formatTime(now)} 提问播报：${data.text}`)
+
+      if (ttsText) {
+        appendLog(`${formatTime(now)} 提问播报：${ttsText}`)
       }
     }
 
@@ -784,8 +875,8 @@ export function useClassroomPage() {
     }
 
     void nextTick().then(() => {
-      if (transcriptFeed.value) {
-        transcriptFeed.value.scrollTop = transcriptFeed.value.scrollHeight
+      if (transcriptListFeed.value) {
+        transcriptListFeed.value.scrollTop = transcriptListFeed.value.scrollHeight
       }
       scrollSummaryToBottom()
     })
@@ -1090,6 +1181,11 @@ export function useClassroomPage() {
       transcriptItems.value = []
       summaries.value = []
       queuedQuestions.value = []
+      askedQuestionsHistory.value = []
+      isQuestionAsking.value = false
+      activeTtsPlayCount.value = 0
+      currentAskingQuestion.value = ''
+      currentAskingHistoryId.value = null
       keywordSnapshots.value = []
       knowledgePoints.value = []
       quizItems.value = []
@@ -1152,6 +1248,30 @@ export function useClassroomPage() {
         time: formatTime(item.start_time || item.created_at),
         score: item.score
       }))
+
+    askedQuestionsHistory.value = sortedQuestionList
+      .filter((item) => item.status === 'asked')
+      .map((item) => {
+        const askedAt = toUnixSeconds(item.asked_at || item.start_time || item.created_at)
+        return {
+          id: item.id,
+          askedAt,
+          askedAtLabel: formatTime(askedAt),
+          text: String(item.text || '').trim()
+        }
+      })
+      .filter((item) => item.text)
+      .sort((a, b) => {
+        if (a.askedAt !== b.askedAt) {
+          return a.askedAt - b.askedAt
+        }
+        return Number(a.id || 0) - Number(b.id || 0)
+      })
+
+    isQuestionAsking.value = false
+    activeTtsPlayCount.value = 0
+    currentAskingQuestion.value = ''
+    currentAskingHistoryId.value = null
 
     const keywordList = Array.isArray(keywordsData) ? keywordsData : []
     const sortedKeywordList = [...keywordList].sort((a, b) => {
@@ -1249,8 +1369,8 @@ export function useClassroomPage() {
     }
 
     await nextTick()
-    if (transcriptFeed.value) {
-      transcriptFeed.value.scrollTop = transcriptFeed.value.scrollHeight
+    if (transcriptListFeed.value) {
+      transcriptListFeed.value.scrollTop = transcriptListFeed.value.scrollHeight
     }
     scrollSummaryToBottom()
     scrollQueueToBottom()
@@ -1513,11 +1633,16 @@ export function useClassroomPage() {
     courseForm,
     sessionForm,
     transcriptFeed,
+    transcriptListFeed,
     summaryFeed,
     queueFeed,
     transcriptItems,
     summaries,
     queuedQuestions,
+    askedQuestionsHistory,
+    isQuestionAsking,
+    currentAskingQuestionText,
+    currentAskingHistoryId,
     stats,
     logs,
     wsTrafficLogs,
