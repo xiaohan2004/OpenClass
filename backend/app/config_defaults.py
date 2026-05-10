@@ -3,9 +3,9 @@
 DEFAULT_DEEPSEEK_API_KEY = ""
 DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEFAULT_QWEN_API_KEY = ""
-DEFAULT_MODEL_NAME = "deepseek-chat"
-DEFAULT_MAX_TOKENS = 1024
-DEFAULT_TEMPERATURE = 1.7
+DEFAULT_MODEL_NAME = "deepseek-v4-flash"
+DEFAULT_MAX_TOKENS = 393216
+DEFAULT_TEMPERATURE = 1
 DEFAULT_MAX_QUESTIONS = 10
 DEFAULT_QUESTION_CONCURRENT_WORKERS = 1
 DEFAULT_RECENT_LECTURE_WINDOW = 240
@@ -70,8 +70,9 @@ DEFAULT_SYSTEM_PROMPT_KNOWLEDGE = """你是课堂知识点提取助手。
 - 只输出 1 个知识点
 - 输出必须是严格合法的 JSON 对象字符串
 - 必须包含 name、description、difficulty 三个字段
-- difficulty 必须是 JSON 对象，至少包含 level 字段，level 只能是 easy / medium / hard 之一
-- 示例：{"name":"机器学习","description":"...","difficulty":{"level":"medium","reason":"..."}}
+- difficulty 是 easy / medium / hard 之一
+- description 长度不超过 120 个汉字
+- 示例：{"name":"机器学习","description":"...","difficulty":"medium"}
 - 不要输出 Markdown，不要代码块，不要解释，不要编号，不要输出对象之外的任何文本"""
 
 DEFAULT_SYSTEM_PROMPT_QUIZ = """你是课堂小测生成助手。
@@ -84,9 +85,9 @@ DEFAULT_SYSTEM_PROMPT_QUIZ = """你是课堂小测生成助手。
 - 输出必须是严格合法的 JSON 对象字符串
 - 必须包含 type、question、answer、explanation 四个字段
 - type 只能是 choice 或 short_answer
-- 如果 type 是 choice，还必须包含 options 字段，且 options 必须是字符串数组
-- 如果 type 是 short_answer，则不要包含 options 字段
-- 示例：{"type":"choice","question":"...","options":["A...","B..."],"answer":"A","explanation":"..."}
+- 如果 type 是 choice，question 字段必须包含题干和选项，且格式正确，answer 字段必须是正确选项的字母（如 A、B、C、D），explanation 字段必须简要解释正确答案的理由
+- 如果 type 是 short_answer，question 字段必须包含题干，answer 字段必须是标准答案的简要文本，explanation 字段必须简要解释正确答案的理由
+- 示例：{"type":"choice","question":"...","answer":"A","explanation":"..."}
 - 不要输出 Markdown，不要代码块，不要解释，不要编号，不要输出对象之外的任何文本"""
 
 DEFAULT_SYSTEM_PROMPT_REPORT = """你是课堂报告生成助手，一个“课堂内容复原与结构化整理引擎”。
@@ -118,6 +119,10 @@ DEFAULT_SYSTEM_PROMPT_REPORT = """你是课堂报告生成助手，一个“课�
    - ❌ 不要解释文字
    - ❌ 不要多余输出
 
+6. **输出只要HTML代码，不要任何其他文本**
+   - 你只要输出一段完整的HTML文档
+   - 不要输出任何解释、说明或多余文本
+   - 再次强调：**只输出HTML代码**，不要输出任何其他文本
 ---
 
 # 📚 内容结构（必须严格按照）

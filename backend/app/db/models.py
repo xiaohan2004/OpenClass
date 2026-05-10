@@ -122,11 +122,15 @@ class Keyword(SQLModel, table=True):
     """课堂关键词集合。"""
 
     __tablename__ = "keywords"
-    __table_args__ = (Index("idx_keywords_session", "session_id"),)
+    __table_args__ = (
+        Index("idx_keywords_session", "session_id"),
+        Index("idx_keywords_source", "session_id", "source"),
+    )
 
     id: Optional[int] = Field(default=None, primary_key=True)
     session_id: int = Field(foreign_key="sessions.id", nullable=False)
     keyword_sets: str = Field(nullable=False)
+    source: str = Field(default=None)
     created_at: int = Field(default_factory=now_ts, nullable=False)
 
 

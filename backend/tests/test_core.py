@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 TESTS_DIR = Path(__file__).parent
 PROJECT_ROOT = TESTS_DIR.parent
@@ -14,6 +14,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from app.core.classcontext import ClassContext
 from app.core.knowledge import KnowledgeProcessor
 from app.core.keyword import KeywordProcessor
+from app.core.keyword_extraction_algorithm import KeywordScore
 from app.core.question import QuestionProcessor
 from app.core.quiz import QuizProcessor
 from app.core.report import LectureReportAgent, ReportProcessor
@@ -164,6 +165,27 @@ class TestKeywordProcessor(unittest.TestCase):
         self.assertEqual(result, ["机器学习", "神经网络", "监督学习"])
         mock_generate_keywords.assert_called_once()
 
+    def test_extract_keywords_algorithm_delegates_to_local_extractor(self):
+        self.processor.extractor = Mock()
+        self.processor.extractor.extract_keywords.return_value = [
+            KeywordScore(
+                keyword="机器学习",
+                tfidf_score=0.8,
+                keybert_score=0.7,
+                history_sim=0.1,
+                novelty_score=0.9,
+                final_score=0.75,
+            )
+        ]
+
+        result = self.processor.extract_keywords_algorithm("课堂内容")
+
+        self.assertEqual(result, ["机器学习"])
+        self.processor.extractor.extract_keywords.assert_called_once_with(
+            transcript="课堂内容",
+            history_summary=None,
+        )
+
 
 class TestKnowledgeProcessor(unittest.TestCase):
     def setUp(self):
@@ -176,14 +198,18 @@ class TestKnowledgeProcessor(unittest.TestCase):
 
     @patch("app.core.knowledge.generate_knowledge")
     def test_generate_knowledge_points_success(self, mock_generate_knowledge):
-        mock_generate_knowledge.return_value = '{"name":"函数","description":"程序的基本单元","difficulty":{"level":"easy"}}'
+        mock_generate_knowledge.return_value = '{"name":"HTTP协议","description":"超文本传输协议","difficulty":"medium"}'
 
         result = self.processor.generate_knowledge_point("课堂内容")
 
         self.assertIsNotNone(result)
-        self.assertEqual(result["name"], "函数")
-        self.assertEqual(result["difficulty"]["level"], "easy")
+        self.assertEqual(result["name"], "HTTP协议")
+        self.assertEqual(result["difficulty"], "medium")
         mock_generate_knowledge.assert_called_once()
+
+    def test_normalize_difficulty_strips_string(self):
+        self.assertEqual(self.processor._normalize_difficulty(" medium "), "medium")
+        self.assertEqual(self.processor._normalize_difficulty(None), "")
 
 
 class TestQuizProcessor(unittest.TestCase):
@@ -252,17 +278,22 @@ class TestLectureReportAgent(unittest.TestCase):
 
 
 class TestReportProcessor(unittest.TestCase):
-    def test_generate_report_delegates_to_agent(self):
-        class FakeAgent:
-            def run(self, material: str, max_iters: int = 1) -> str:
-                if material == "课堂材料" and max_iters == 2:
-                    return "<html>ok</html>"
-                return ""
+    @patch("app.core.report.generate_report")
+    def test_generate_report_extracts_html_from_wrapped_response(
+        self, mock_generate_report
+    ):
+        mock_generate_report.return_value = (
+            "下面是生成的报告：\n"
+            "```html\n"
+            "<html><body><h1>报告</h1></body></html>\n"
+            "```"
+        )
 
-        processor = ReportProcessor(agent=FakeAgent())
-        html = processor.generate_report("课堂材料", max_iters=2)
+        processor = ReportProcessor()
+        html = processor.generate_report("课堂材料")
 
-        self.assertEqual(html, "<html>ok</html>")
+        self.assertEqual(html, "<html><body><h1>报告</h1></body></html>")
+        mock_generate_report.assert_called_once_with("课堂材料")
 
 
 if __name__ == "__main__":

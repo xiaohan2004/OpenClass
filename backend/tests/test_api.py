@@ -17,6 +17,7 @@ PROJECT_ROOT = TESTS_DIR.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import app.config as app_config
+from app.api.routes import rest as rest_routes
 import app.db.session as db_session_module
 from app.db import init_db
 from app.db.crud import (
@@ -481,6 +482,7 @@ class TestAPI(unittest.TestCase):
         )
         self.assertEqual(keyword_detail.status_code, 200)
         self.assertIn("极限", keyword_detail.json()["data"]["keyword_sets"])
+        self.assertEqual(keyword_detail.json()["data"]["source"], "llm")
 
         keyword_by_session = self.request(
             "GET", f"/api/sessions/{self.seed_data['session_id']}/keywords"
@@ -605,6 +607,89 @@ class TestAPI(unittest.TestCase):
         self.assertEqual(
             stats_hourlies_response.json()["data"][0]["service_type"], "llm"
         )
+
+    def test_generate_report_endpoint_starts_background_work_only(self):
+        """触发报告生成接口应立即返回，不在请求内执行耗时生成。"""
+        with mock.patch.object(rest_routes, "_start_report_generation") as mock_start:
+            response = self.request(
+                "POST", f"/api/sessions/{self.seed_data['session_id']}/reports"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["msg"], "报告生成已启动，请稍候...")
+        report_data = response.json()["data"]
+        self.assertIsNone(report_data["content"])
+        mock_start.assert_called_once()
+        self.assertEqual(mock_start.call_args.args[1], self.seed_data["session_id"])
+        self.assertIn("老师讲课原文", mock_start.call_args.args[2])
+
+    def test_report_generation_saves_html_and_pdf_path(self):
+        """课后报告生成成功时应保存 HTML 内容与 PDF 路径。"""
+        with Session(db_session_module.get_engine()) as db:
+            created = create_report(db, self.seed_data["session_id"], content=None)
+            report_id = created.id
+
+        with (
+            mock.patch.object(
+                rest_routes.ReportProcessor,
+                "generate_report",
+                return_value="<h1>课堂总结</h1>",
+            ),
+            mock.patch.object(
+                rest_routes,
+                "_render_html_to_pdf",
+            ) as mock_render,
+        ):
+            rest_routes._run_report_generation(
+                report_id,
+                self.seed_data["session_id"],
+                "课堂材料",
+            )
+
+        response = self.request("GET", f"/api/reports/{report_id}")
+        self.assertEqual(response.status_code, 200)
+        report_data = response.json()["data"]
+        self.assertEqual(report_data["content"], "<h1>课堂总结</h1>")
+        self.assertIn(
+            f"report_session{self.seed_data['session_id']}_id{report_id}_",
+            report_data["file_path"],
+        )
+        self.assertTrue(report_data["file_path"].endswith(".pdf"))
+        mock_render.assert_called_once()
+
+    def test_report_generation_saves_html_file_when_pdf_export_fails(self):
+        """PDF 导出失败时应保存 HTML 文件，而不是把报告标为生成失败。"""
+        with Session(db_session_module.get_engine()) as db:
+            created = create_report(db, self.seed_data["session_id"], content=None)
+            report_id = created.id
+
+        with (
+            mock.patch.object(
+                rest_routes.ReportProcessor,
+                "generate_report",
+                return_value="<h1>课堂总结</h1>",
+            ),
+            mock.patch.object(
+                rest_routes,
+                "_render_html_to_pdf",
+                side_effect=RuntimeError("playwright 不可用"),
+            ),
+        ):
+            rest_routes._run_report_generation(
+                report_id,
+                self.seed_data["session_id"],
+                "课堂材料",
+            )
+
+        response = self.request("GET", f"/api/reports/{report_id}")
+        self.assertEqual(response.status_code, 200)
+        report_data = response.json()["data"]
+        self.assertEqual(report_data["content"], "<h1>课堂总结</h1>")
+        self.assertIn(
+            f"report_session{self.seed_data['session_id']}_id{report_id}_",
+            report_data["file_path"],
+        )
+        self.assertTrue(report_data["file_path"].endswith(".html"))
 
     def test_settings_endpoints(self):
         """设置接口应支持读取与更新。"""

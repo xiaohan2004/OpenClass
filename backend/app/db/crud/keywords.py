@@ -7,9 +7,25 @@ from sqlmodel import Session, select
 from app.db.models import Keyword, KeywordTranscriptMap
 
 
-def create_keyword(db: Session, session_id: int, keyword_sets: str) -> Keyword:
+def _normalize_keyword_source(source: str | None) -> str:
+    normalized = (source or "llm").strip().lower()
+    if normalized not in {"llm", "algorithm"}:
+        return "llm"
+    return normalized
+
+
+def create_keyword(
+    db: Session,
+    session_id: int,
+    keyword_sets: str,
+    source: str = "llm",
+) -> Keyword:
     """创建关键词集合记录。"""
-    keyword = Keyword(session_id=session_id, keyword_sets=keyword_sets)
+    keyword = Keyword(
+        session_id=session_id,
+        keyword_sets=keyword_sets,
+        source=_normalize_keyword_source(source),
+    )
     db.add(keyword)
     db.commit()
     db.refresh(keyword)
@@ -27,13 +43,16 @@ def list_keywords(db: Session) -> list[Keyword]:
     return list(db.exec(statement))
 
 
-def list_keywords_by_session(db: Session, session_id: int) -> list[Keyword]:
+def list_keywords_by_session(
+    db: Session,
+    session_id: int,
+    source: Optional[str] = None,
+) -> list[Keyword]:
     """按课堂获取关键词集合记录。"""
-    statement = (
-        select(Keyword)
-        .where(Keyword.session_id == session_id)
-        .order_by(Keyword.__table__.c.created_at.desc())
-    )
+    statement = select(Keyword).where(Keyword.session_id == session_id)
+    if source is not None:
+        statement = statement.where(Keyword.source == _normalize_keyword_source(source))
+    statement = statement.order_by(Keyword.__table__.c.created_at.desc())
     return list(db.exec(statement))
 
 

@@ -103,6 +103,49 @@ button {
   box-shadow: var(--shadow);
 }
 
+.report-toast {
+  position: fixed;
+  top: 22px;
+  left: 50%;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  max-width: min(520px, calc(100vw - 32px));
+  min-height: 44px;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  color: var(--text-main);
+  font-size: 0.92rem;
+  font-weight: 700;
+  transform: translateX(-50%);
+}
+
+.report-toast__dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--accent-strong);
+  box-shadow: 0 0 0 4px rgba(106, 159, 115, 0.16);
+}
+
+.report-toast.is-error .report-toast__dot {
+  background: #bc4b4b;
+  box-shadow: 0 0 0 4px rgba(188, 75, 75, 0.14);
+}
+
+.report-toast-enter-active,
+.report-toast-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.report-toast-enter-from,
+.report-toast-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-8px);
+}
+
 .top-bar {
   position: relative;
   z-index: 2;
@@ -470,6 +513,7 @@ button {
   pointer-events: none;
   transition: transform 220ms ease, opacity 220ms ease;
   z-index: 4;
+  text-align: left;
 }
 
 .quiz-drawer.is-open {
@@ -502,7 +546,7 @@ button {
   padding-right: 6px;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   scrollbar-gutter: stable;
 }
 /* 小测答案按钮专用样式 */
@@ -513,6 +557,7 @@ button {
   margin-top: 12px;
   border-radius: 16px;
   box-shadow: none;
+  align-self: flex-start;
 }
 
 .quiz-drawer__body::-webkit-scrollbar {
@@ -536,6 +581,9 @@ button {
   margin: 0 0 10px;
   line-height: 1.7;
   color: var(--text-main);
+  width: 100%;
+  white-space: pre-wrap;
+  text-align: left;
 }
 
 .quiz-drawer__actions {
@@ -1457,6 +1505,13 @@ button {
 @media (max-width: 860px) {
   .app-shell {
     padding: 14px 14px 20px;
+  }
+
+  .report-toast {
+    top: 14px;
+    width: calc(100vw - 28px);
+    justify-content: center;
+    font-size: 0.86rem;
   }
 
   .top-bar {

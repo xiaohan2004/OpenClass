@@ -393,12 +393,23 @@ class TestDatabase(unittest.TestCase):
 
             keyword = create_keyword(db, session.id, '["极限", "连续"]')
             self.assertEqual(get_keyword_by_id(db, keyword.id).session_id, session.id)
+            self.assertEqual(keyword.source, "llm")
+            algorithm_keyword = create_keyword(
+                db,
+                session.id,
+                '["TF-IDF", "KeyBERT"]',
+                source="algorithm",
+            )
             updated_keyword = update_keyword(
                 db, keyword.id, keyword_sets='["导数", "微分"]'
             )
             self.assertIn("导数", updated_keyword.keyword_sets)
-            self.assertEqual(len(list_keywords(db)), 1)
-            self.assertEqual(len(list_keywords_by_session(db, session.id)), 1)
+            self.assertEqual(len(list_keywords(db)), 2)
+            self.assertEqual(len(list_keywords_by_session(db, session.id)), 2)
+            self.assertEqual(
+                list_keywords_by_session(db, session.id, source="algorithm")[0].id,
+                algorithm_keyword.id,
+            )
 
             keyword_map = link_keyword_to_transcript(db, keyword.id, transcript.id)
             self.assertEqual(
@@ -586,6 +597,7 @@ class TestDatabase(unittest.TestCase):
             self.assertEqual(len(list_segment_summaries(db)), 0)
 
             self.assertTrue(delete_keyword(db, keyword.id))
+            self.assertTrue(delete_keyword(db, algorithm_keyword.id))
             self.assertEqual(len(list_keywords(db)), 0)
 
             self.assertTrue(delete_quiz_item(db, quiz_item.id))
@@ -665,6 +677,10 @@ class TestDatabase(unittest.TestCase):
         }
 
         self.assertTrue(expected_tables.issubset(tables))
+        keyword_columns = {
+            column["name"] for column in inspector.get_columns(Keyword.__tablename__)
+        }
+        self.assertIn("source", keyword_columns)
 
 
 def main():

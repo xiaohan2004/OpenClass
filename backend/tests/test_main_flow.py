@@ -21,6 +21,7 @@ import app.db.session as db_session_module
 from app.core.classcontext import ClassContext
 from app.core.main_flow import (
     _background_tasks_processing,
+    _background_keyword_extraction,
     _handle_task_result,
     handle_audio,
     start_background_tasks,
@@ -59,6 +60,37 @@ class TestHandleAudio(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(
                     safe_ws.send_json.await_args_list[0].args[0]["type"], "transcript"
                 )
+
+    def test_background_keyword_extraction_uses_algorithm_and_persists(self):
+        with (
+            patch(
+                "app.core.main_flow.keyword_processor.extract_keywords_algorithm",
+                return_value=["机器学习", "神经网络"],
+            ) as mock_extract,
+            patch("app.core.main_flow._persist_keywords") as mock_persist,
+        ):
+            _background_keyword_extraction(1, "课堂文本", [10, 11])
+
+        mock_extract.assert_called_once_with("课堂文本")
+        mock_persist.assert_called_once_with(
+            1,
+            ["机器学习", "神经网络"],
+            [10, 11],
+            "algorithm",
+        )
+
+    def test_background_keyword_extraction_handles_algorithm_errors(self):
+        with (
+            patch(
+                "app.core.main_flow.keyword_processor.extract_keywords_algorithm",
+                side_effect=RuntimeError("算法失败"),
+            ) as mock_extract,
+            patch("app.core.main_flow._persist_keywords") as mock_persist,
+        ):
+            _background_keyword_extraction(1, "课堂文本", [10, 11])
+
+        mock_extract.assert_called_once_with("课堂文本")
+        mock_persist.assert_not_called()
 
     @patch("app.core.main_flow.random.random")
     async def test_handle_audio_sends_tts_out_when_asking(

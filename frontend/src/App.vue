@@ -3,6 +3,19 @@
     <div class="ambient ambient-left"></div>
     <div class="ambient ambient-right"></div>
 
+    <transition name="report-toast">
+      <div
+        v-if="reportToast"
+        class="report-toast glass-panel"
+        :class="`is-${reportToast.type}`"
+        role="status"
+        aria-live="polite"
+      >
+        <span class="report-toast__dot"></span>
+        <span>{{ reportToast.message }}</span>
+      </div>
+    </transition>
+
     <header class="top-bar glass-panel">
       <div class="top-bar__left">
         <div class="top-selector-stack">
@@ -455,6 +468,7 @@ const {
   currentAskingQuestionText,
   currentAskingHistoryId,
   wsTrafficLogs,
+  reportToast,
   sessionStatusLabel,
   canStartSession,
   canEndSession,

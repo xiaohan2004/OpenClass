@@ -3,16 +3,28 @@ import { fetchSettings, patchSettings } from '../api/api'
 
 const SUCCESS_TOAST_DURATION = 2200
 const DEBUG_TOGGLE_STORAGE_KEY = 'openclass.ui.showDebugToggle'
+const KEYWORD_SOURCE_FILTER_STORAGE_KEY = 'openclass.keyword.sourceFilter'
+const KEYWORD_SOURCE_FILTER_VALUES = ['llm', 'algorithm', 'all']
 
 const cardDefs = [
     {
         id: 'debug_ui',
-        title: '调试开关状态',
-        description: '前端本地设置，控制是否显示调试按钮',
+        title: '本地设置',
+        description: '前端本地设置，只保存在当前浏览器',
         column: 'left',
         localOnly: true,
         fields: [
-            { key: 'ui_show_debug_toggle', label: '显示调试按钮', kind: 'boolean' }
+            { key: 'ui_show_debug_toggle', label: '显示调试按钮', kind: 'boolean' },
+            {
+                key: 'keyword_source_filter',
+                label: '关键词来源',
+                kind: 'select',
+                options: [
+                    { value: 'llm', label: 'llm' },
+                    { value: 'algorithm', label: 'algorithm' },
+                    { value: 'all', label: 'all' }
+                ]
+            }
         ]
     },
     {
@@ -96,6 +108,9 @@ const cardDefs = [
 const fieldKindMap = Object.fromEntries(
     cardDefs.flatMap((card) => card.fields.map((field) => [field.key, field.kind]))
 )
+const fieldOptionMap = Object.fromEntries(
+    cardDefs.flatMap((card) => card.fields.map((field) => [field.key, field.options || []]))
+)
 
 const formValues = reactive({})
 const sensitiveStatus = reactive({})
@@ -139,6 +154,14 @@ const normalizeValue = (key, value) => {
         return String(value).toLowerCase() === 'true'
     }
 
+    if (kind === 'select') {
+        const options = fieldOptionMap[key] || []
+        const normalized = String(value ?? '').trim()
+        return options.some((option) => option.value === normalized)
+            ? normalized
+            : String(options[0]?.value ?? '')
+    }
+
     if (value == null) {
         return ''
     }
@@ -148,27 +171,39 @@ const normalizeValue = (key, value) => {
 
 const loadLocalSettings = () => {
     let showDebugToggle = true
+    let keywordSourceFilter = 'llm'
     try {
         const raw = window.localStorage.getItem(DEBUG_TOGGLE_STORAGE_KEY)
         if (raw != null) {
             showDebugToggle = String(raw).toLowerCase() !== 'false'
         }
+        const rawKeywordSourceFilter = window.localStorage.getItem(KEYWORD_SOURCE_FILTER_STORAGE_KEY)
+        if (KEYWORD_SOURCE_FILTER_VALUES.includes(rawKeywordSourceFilter)) {
+            keywordSourceFilter = rawKeywordSourceFilter
+        }
     } catch {
         showDebugToggle = true
+        keywordSourceFilter = 'llm'
     }
 
     formValues.ui_show_debug_toggle = showDebugToggle
+    formValues.keyword_source_filter = keywordSourceFilter
 }
 
 const persistLocalSettings = (card) => {
     const containsDebugToggle = card.fields.some((field) => field.key === 'ui_show_debug_toggle')
-    if (!containsDebugToggle) {
+    const containsKeywordSourceFilter = card.fields.some((field) => field.key === 'keyword_source_filter')
+    if (!containsDebugToggle && !containsKeywordSourceFilter) {
         return
     }
 
     const visible = Boolean(formValues.ui_show_debug_toggle)
+    const keywordSourceFilter = KEYWORD_SOURCE_FILTER_VALUES.includes(formValues.keyword_source_filter)
+        ? formValues.keyword_source_filter
+        : 'llm'
     try {
         window.localStorage.setItem(DEBUG_TOGGLE_STORAGE_KEY, String(visible))
+        window.localStorage.setItem(KEYWORD_SOURCE_FILTER_STORAGE_KEY, keywordSourceFilter)
     } catch {
         // ignore write failure and keep in-memory value
     }
@@ -176,6 +211,11 @@ const persistLocalSettings = (card) => {
     window.dispatchEvent(
         new CustomEvent('openclass:debug-toggle-updated', {
             detail: { visible }
+        })
+    )
+    window.dispatchEvent(
+        new CustomEvent('openclass:local-settings-updated', {
+            detail: { visible, keywordSourceFilter }
         })
     )
 }

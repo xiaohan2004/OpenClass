@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict
 from sqlmodel import Session
@@ -222,6 +222,7 @@ class KeywordRead(BaseModel):
     id: int
     session_id: int
     keyword_sets: str
+    source: str = "llm"
     created_at: int
 
 
@@ -1008,20 +1009,14 @@ def list_session_reports_endpoint(
     )
 
 
-async def _generate_report_background(report_id: int, session_id: int, material: str):
-    """后台异步生成报告，生成 PDF 并保存，更新数据库。"""
+def _run_report_generation(report_id: int, session_id: int, material: str) -> None:
+    """在线程中生成报告，PDF 导出失败时保留 HTML 报告。"""
     try:
         logger.info("开始生成课后报告 (report_id=%d)", report_id)
         processor = ReportProcessor()
         html_content = processor.generate_report(material=material)
 
-        # 生成 PDF 文件
-        pdf_file_path = await asyncio.to_thread(
-            _save_report_as_pdf,
-            report_id,
-            session_id,
-            html_content,
-        )
+        pdf_file_path = _try_save_report_as_pdf(report_id, session_id, html_content)
 
         # 更新数据库中的报告内容和文件路径
         from app.db import get_engine
@@ -1034,7 +1029,10 @@ async def _generate_report_background(report_id: int, session_id: int, material:
                 file_path=pdf_file_path,
             )
 
-        logger.info("课后报告生成完成 (report_id=%d, pdf=%s)", report_id, pdf_file_path)
+        if pdf_file_path:
+            logger.info("课后报告生成完成 (report_id=%d, pdf=%s)", report_id, pdf_file_path)
+        else:
+            logger.info("课后报告生成完成 (report_id=%d, pdf=未生成)", report_id)
     except Exception as e:
         logger.error("课后报告生成失败 (report_id=%d): %s", report_id, e)
         # 记录错误信息到报告内容中
@@ -1044,14 +1042,30 @@ async def _generate_report_background(report_id: int, session_id: int, material:
             update_report(db, report_id, content=f"<p>报告生成失败: {str(e)}</p>")
 
 
+def _start_report_generation(report_id: int, session_id: int, material: str) -> None:
+    """启动独立线程，避免课后报告任务阻塞请求生命周期。"""
+    thread = threading.Thread(
+        target=_run_report_generation,
+        args=(report_id, session_id, material),
+        name=f"report-generator-{report_id}",
+        daemon=True,
+    )
+    thread.start()
+
+
+def _try_save_report_as_pdf(
+    report_id: int, session_id: int, html_content: str
+) -> str | None:
+    """尝试导出 PDF；失败时保存 HTML 文件作为降级产物。"""
+    try:
+        return _save_report_as_pdf(report_id, session_id, html_content)
+    except Exception as e:
+        logger.warning("PDF 导出失败，改为保存 HTML 报告 (report_id=%d): %s", report_id, e)
+        return _save_report_as_html(report_id, session_id, html_content)
+
+
 def _save_report_as_pdf(report_id: int, session_id: int, html_content: str) -> str:
     """将 HTML 报告转换为 PDF 并保存。返回相对文件路径。"""
-    try:
-        from weasyprint import HTML, CSS
-    except ImportError:
-        logger.error("weasyprint 未安装，无法生成 PDF")
-        raise RuntimeError("PDF 生成库缺失，请安装 weasyprint")
-
     # 创建 data/reports 文件夹
     reports_dir = Path("data") / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
@@ -1062,8 +1076,8 @@ def _save_report_as_pdf(report_id: int, session_id: int, html_content: str) -> s
     pdf_path = reports_dir / pdf_filename
 
     try:
-        # 使用 weasyprint 转换 HTML 为 PDF
-        HTML(string=html_content).write_pdf(str(pdf_path))
+        # 使用 Playwright/Chromium 转换 HTML 为 PDF
+        _render_html_to_pdf(html_content, pdf_path)
 
         # 返回相对路径
         relative_path = str(pdf_path).replace("\\", "/")
@@ -1072,6 +1086,52 @@ def _save_report_as_pdf(report_id: int, session_id: int, html_content: str) -> s
     except Exception as e:
         logger.error("PDF 生成失败: %s", e)
         raise
+
+
+def _save_report_as_html(report_id: int, session_id: int, html_content: str) -> str:
+    """将 HTML 报告保存为文件。返回相对文件路径。"""
+    reports_dir = Path("data") / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    html_filename = f"report_session{session_id}_id{report_id}_{timestamp}.html"
+    html_path = reports_dir / html_filename
+    html_path.write_text(html_content, encoding="utf-8")
+
+    relative_path = str(html_path).replace("\\", "/")
+    logger.info("HTML 报告已保存: %s", relative_path)
+    return relative_path
+
+
+def _render_html_to_pdf(html_content: str, pdf_path: Path) -> None:
+    """使用 Playwright Chromium 渲染 HTML 并打印为 PDF。"""
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception as e:
+        logger.error("playwright 不可用，无法生成 PDF: %s", e)
+        raise RuntimeError(
+            "PDF 生成库不可用，请安装 playwright 并执行 python -m playwright install chromium"
+        ) from e
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            page = browser.new_page()
+            page.set_content(html_content, wait_until="load")
+            page.pdf(
+                path=str(pdf_path),
+                format="A4",
+                print_background=True,
+                prefer_css_page_size=True,
+                margin={
+                    "top": "18mm",
+                    "right": "16mm",
+                    "bottom": "18mm",
+                    "left": "16mm",
+                },
+            )
+        finally:
+            browser.close()
 
 
 def _build_report_material(
@@ -1138,9 +1198,11 @@ def _build_report_material(
         for kw in keywords_asc:
             try:
                 keyword_list = json.loads(kw.keyword_sets)
-                parts.append(f"{'、'.join(keyword_list)}\n\n")
+                source_label = "算法" if kw.source == "algorithm" else "LLM"
+                parts.append(f"[{source_label}] {'、'.join(keyword_list)}\n\n")
             except (json.JSONDecodeError, TypeError):
-                parts.append(f"{kw.keyword_sets}\n\n")
+                source_label = "算法" if kw.source == "algorithm" else "LLM"
+                parts.append(f"[{source_label}] {kw.keyword_sets}\n\n")
 
     # 7. 知识点（从旧到新）
     knowledge_points = list_knowledge_points_by_session(db, session_id)
@@ -1177,7 +1239,6 @@ def _build_report_material(
 @router.post("/sessions/{session_id}/reports")
 def generate_report_endpoint(
     session_id: int,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db_session),
 ):
     """触发课后报告生成（异步），立即返回"""
@@ -1195,12 +1256,7 @@ def generate_report_endpoint(
     report = create_report(db, session_id=session_id, content=None)
 
     # 后台异步生成任务（FastAPI BackgroundTasks）
-    background_tasks.add_task(
-        _generate_report_background,
-        report.id,
-        session_id,
-        material,
-    )
+    _start_report_generation(report.id, session_id, material)
 
     return _success(
         _serialize_model(report, ReportRead),

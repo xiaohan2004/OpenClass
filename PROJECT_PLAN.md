@@ -172,12 +172,14 @@ id INTEGER PRIMARY KEY AUTOINCREMENT,
 session_id INTEGER NOT NULL,
 
 keyword_sets TEXT NOT NULL,  -- 关键词集合（JSON格式，一组关键词）
+source TEXT NOT NULL DEFAULT 'llm',  -- 提取来源：llm 或 algorithm
 
 created_at INTEGER
 
 FOREIGN KEY (session_id) REFERENCES sessions(id)
 );
 CREATE INDEX idx_keywords_session ON keywords(session_id);
+CREATE INDEX idx_keywords_source ON keywords(session_id, source);
 
 -- =========================
 -- keyword_transcript_map（关键词-上下文映射）

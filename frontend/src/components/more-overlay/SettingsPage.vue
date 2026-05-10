@@ -42,6 +42,14 @@
                 </select>
               </template>
 
+              <template v-else-if="field.kind === 'select'">
+                <select v-model="formValues[field.key]" class="settings-input">
+                  <option v-for="option in field.options" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                  </option>
+                </select>
+              </template>
+
               <template v-else-if="field.kind === 'longtext-modal'">
                 <div class="settings-prompt-editor">
                   <div class="settings-prompt-editor__head">

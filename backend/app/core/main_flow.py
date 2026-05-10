@@ -148,7 +148,7 @@ def start_background_tasks(context: ClassContext, safe_ws: SafeWebSocket) -> Non
 async def _background_tasks_processing(
     context: ClassContext,
     safe_ws: SafeWebSocket,
-    call_count: int,
+    call_count: int = 1,
 ) -> None:
     """执行后台任务。"""
     settings = get_settings()
@@ -263,6 +263,7 @@ async def _background_tasks_processing(
                         context.session_id,
                         keywords_result,
                         transcript_ids,
+                        "llm",
                     )
 
             if knowledge_result and not isinstance(knowledge_result, Exception):
@@ -377,13 +378,17 @@ def _persist_keywords(
     session_id: int,
     keywords: list[str],
     transcript_ids: list[int],
+    source: str = "llm",
 ) -> int:
     """将关键词集合及其映射写入数据库。"""
     with Session(get_engine()) as db:
         # 将关键词列表序列化为 JSON 字符串存储
         keyword_sets_json = json.dumps(keywords, ensure_ascii=False)
         keyword = create_keyword(
-            db, session_id=session_id, keyword_sets=keyword_sets_json
+            db,
+            session_id=session_id,
+            keyword_sets=keyword_sets_json,
+            source=source,
         )
 
         # 建立与转写的映射
@@ -443,14 +448,18 @@ def _background_keyword_extraction(
     transcript_ids: list[int],
 ) -> None:
     """后台执行关键词提取（不阻塞主流程）"""
-    keywords_result = keyword_processor.extract_keywords_algorithm(context_text)
+    try:
+        keywords_result = keyword_processor.extract_keywords_algorithm(context_text)
 
-    if keywords_result:
-        logger.info("后台关键词提取结果: %s", keywords_result)
+        if keywords_result:
+            logger.info("后台关键词提取结果: %s", keywords_result)
 
-        # 持久化关键词
-        _persist_keywords(
-            session_id,
-            keywords_result,
-            transcript_ids,
-        )
+            # 持久化关键词
+            _persist_keywords(
+                session_id,
+                keywords_result,
+                transcript_ids,
+                "algorithm",
+            )
+    except Exception as e:
+        logger.error("后台关键词提取失败: %s", e)

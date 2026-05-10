@@ -83,28 +83,11 @@ class KnowledgeProcessor:
         return None
 
     @staticmethod
-    def _normalize_difficulty(value) -> dict:
-        if isinstance(value, dict):
-            return value
-
+    def _normalize_difficulty(value) -> str:
         if isinstance(value, str):
-            stripped = value.strip()
-            if not stripped:
-                return {}
+            return value.strip()
 
-            try:
-                parsed = json.loads(stripped)
-                if isinstance(parsed, dict):
-                    return parsed
-            except Exception:
-                pass
-
-            return {"level": stripped}
-
-        if value is None:
-            return {}
-
-        return {"level": str(value)}
+        return ""
 
     def _normalize_item(self, item: object) -> dict | None:
         if not isinstance(item, dict):

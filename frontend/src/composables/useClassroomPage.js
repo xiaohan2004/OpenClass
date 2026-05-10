@@ -21,6 +21,8 @@ import {
 
 const AUDIO_CHUNK_MS = 5000
 const RECEIVE_DRAIN_MS = 12000
+const KEYWORD_SOURCE_FILTER_STORAGE_KEY = 'openclass.keyword.sourceFilter'
+const KEYWORD_SOURCE_FILTER_VALUES = ['llm', 'algorithm', 'all']
 
 export function useClassroomPage() {
   const sessionStatus = ref('idle')
@@ -87,6 +89,7 @@ export function useClassroomPage() {
   const currentAskingQuestion = ref('')
   const currentAskingHistoryId = ref(null)
   const keywordSnapshots = ref([])
+  const keywordSourceFilter = ref('llm')
   const knowledgePoints = ref([])
   const quizItems = ref([])
   const isKnowledgeExpanded = ref(false)
@@ -95,8 +98,24 @@ export function useClassroomPage() {
   const stats = ref([])
   const logs = ref([])
   const wsTrafficLogs = ref([])
+  const reportToast = ref(null)
+  let reportToastTimer = null
   const onDeviceChange = () => {
     void refreshMicrophones()
+  }
+
+  function showReportToast(type, message) {
+    reportToast.value = {
+      type,
+      message
+    }
+    if (reportToastTimer) {
+      window.clearTimeout(reportToastTimer)
+    }
+    reportToastTimer = window.setTimeout(() => {
+      reportToast.value = null
+      reportToastTimer = null
+    }, 3200)
   }
 
   function appendWsTrafficLog(direction, content) {
@@ -189,7 +208,11 @@ export function useClassroomPage() {
   })
 
   const latestSessionKeywords = computed(() => {
-    const latest = keywordSnapshots.value[keywordSnapshots.value.length - 1] || null
+    const snapshots =
+      keywordSourceFilter.value === 'all'
+        ? keywordSnapshots.value
+        : keywordSnapshots.value.filter((item) => item.source === keywordSourceFilter.value)
+    const latest = snapshots[snapshots.length - 1] || null
     return Array.isArray(latest?.keywords) ? latest.keywords : []
   })
 
@@ -280,6 +303,40 @@ export function useClassroomPage() {
     () => currentQuizIndex.value >= 0 && currentQuizIndex.value < quizItems.value.length - 1
   )
 
+  function normalizeKeywordSource(source) {
+    const normalized = String(source || 'llm').trim().toLowerCase()
+    return normalized === 'algorithm' ? 'algorithm' : 'llm'
+  }
+
+  function normalizeKeywordSourceFilter(value) {
+    const normalized = String(value || '').trim().toLowerCase()
+    return KEYWORD_SOURCE_FILTER_VALUES.includes(normalized) ? normalized : 'llm'
+  }
+
+  function loadKeywordSourceFilter() {
+    try {
+      keywordSourceFilter.value = normalizeKeywordSourceFilter(
+        window.localStorage.getItem(KEYWORD_SOURCE_FILTER_STORAGE_KEY)
+      )
+    } catch {
+      keywordSourceFilter.value = 'llm'
+    }
+  }
+
+  function handleLocalSettingsUpdated(event) {
+    if (event?.detail?.keywordSourceFilter) {
+      keywordSourceFilter.value = normalizeKeywordSourceFilter(event.detail.keywordSourceFilter)
+      return
+    }
+    loadKeywordSourceFilter()
+  }
+
+  function handleLocalStorageUpdated(event) {
+    if (event?.key === KEYWORD_SOURCE_FILTER_STORAGE_KEY) {
+      keywordSourceFilter.value = normalizeKeywordSourceFilter(event.newValue)
+    }
+  }
+
   function parseKeywordSet(rawKeywordSets) {
     if (!rawKeywordSets) {
       return []
@@ -330,8 +387,8 @@ export function useClassroomPage() {
       return null
     }
 
-    const question = String(item.question || '').trim()
-    if (!question) {
+    const question = String(item.question || '')
+    if (!question.trim()) {
       return null
     }
 
@@ -818,7 +875,8 @@ export function useClassroomPage() {
           {
             id: createTransientId('keyword-set'),
             createdAt: now,
-            keywords: incomingKeywords
+            keywords: incomingKeywords,
+            source: normalizeKeywordSource(data?.source)
           }
         ]
       }
@@ -1294,7 +1352,8 @@ export function useClassroomPage() {
       .map((item) => ({
         id: item.id,
         createdAt: toUnixSeconds(item.created_at),
-        keywords: parseKeywordSet(item.keyword_sets)
+        keywords: parseKeywordSet(item.keyword_sets),
+        source: normalizeKeywordSource(item.source)
       }))
       .filter((item) => item.keywords.length > 0)
 
@@ -1530,15 +1589,6 @@ export function useClassroomPage() {
       const buttonClickTs = Math.floor(Date.now() / 1000)
       await endSession(selectedSessionId.value, buttonClickTs)
 
-      try {
-        await generateSessionReport(selectedSessionId.value)
-        appendLog(`${formatTime(Math.floor(Date.now() / 1000))} 已触发课后报告生成`) 
-      } catch (reportError) {
-        appendLog(
-          `${formatTime(Math.floor(Date.now() / 1000))} 课后报告触发失败：${reportError instanceof Error ? reportError.message : '未知错误'}`
-        )
-      }
-
       await stopRecordingLoop()
       scheduleWsClose()
       isRunning.value = false
@@ -1549,6 +1599,20 @@ export function useClassroomPage() {
         runningSince: null
       })
       appendLog(`${formatTime(Math.floor(Date.now() / 1000))} 课堂结束，延迟关闭接收`) 
+
+      generateSessionReport(selectedSessionId.value)
+        .then(() => {
+          appendLog(`${formatTime(Math.floor(Date.now() / 1000))} 已触发课后报告生成`) 
+          showReportToast('success', '课后报告生成任务已提交')
+        })
+        .catch((reportError) => {
+          const errorMessage = reportError instanceof Error ? reportError.message : '未知错误'
+          appendLog(
+            `${formatTime(Math.floor(Date.now() / 1000))} 课后报告触发失败：${errorMessage}`
+          )
+          showReportToast('error', `课后报告生成任务提交失败：${errorMessage}`)
+        })
+
       await loadSessions(selectedCourseId.value, { preserveSelection: true })
       await loadSessionData(selectedSessionId.value)
     } catch (error) {
@@ -1603,6 +1667,10 @@ export function useClassroomPage() {
   })
 
   onMounted(async () => {
+    loadKeywordSourceFilter()
+    window.addEventListener('openclass:local-settings-updated', handleLocalSettingsUpdated)
+    window.addEventListener('storage', handleLocalStorageUpdated)
+
     timerTick = window.setInterval(() => {
       nowTimestamp.value = Math.floor(Date.now() / 1000)
     }, 1000)
@@ -1621,7 +1689,13 @@ export function useClassroomPage() {
     if (timerTick) {
       window.clearInterval(timerTick)
     }
+    if (reportToastTimer) {
+      window.clearTimeout(reportToastTimer)
+      reportToastTimer = null
+    }
     navigator.mediaDevices?.removeEventListener?.('devicechange', onDeviceChange)
+    window.removeEventListener('openclass:local-settings-updated', handleLocalSettingsUpdated)
+    window.removeEventListener('storage', handleLocalStorageUpdated)
     void closeSessionWebSocket()
     stopMicrophone()
   })
@@ -1654,6 +1728,7 @@ export function useClassroomPage() {
     stats,
     logs,
     wsTrafficLogs,
+    reportToast,
     sessionStatusLabel,
     canStartSession,
     canEndSession,

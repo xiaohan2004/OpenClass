@@ -110,6 +110,19 @@ class KeywordProcessor:
             logger.error("关键词提取失败: %s", e)
             raise
 
+    def extract_keywords_algorithm(
+        self,
+        transcript: str,
+        history_summary: str | None = None,
+    ) -> list[str]:
+        """
+        使用本地算法提取关键词。
+
+        该方法作为主流程后台算法提取的显式入口，区别于
+        extract_keywords_llm 的大模型提取路径。
+        """
+        return self.extract_keywords(transcript, history_summary)
+
     def extract_keywords_with_scores(
         self,
         transcript: str,

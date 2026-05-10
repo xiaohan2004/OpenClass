@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Generator
 
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, text
 
 from app.config_defaults import DEFAULT_DATABASE_ECHO, DEFAULT_DATABASE_URL
 from app.db.config_store import ensure_default_settings
@@ -73,9 +73,33 @@ def init_db() -> None:
 
     engine_instance = get_engine()
     SQLModel.metadata.create_all(engine_instance)
+    _ensure_schema_compatibility(engine_instance)
 
     with Session(engine_instance) as db:
         ensure_default_settings(db)
+
+
+def _ensure_schema_compatibility(engine_instance) -> None:
+    """补齐旧 SQLite 数据库中 create_all 不会自动新增的列。"""
+    with engine_instance.begin() as conn:
+        dialect_name = conn.dialect.name
+        if dialect_name != "sqlite":
+            return
+
+        keyword_columns = {
+            row[1] for row in conn.execute(text("PRAGMA table_info(keywords)"))
+        }
+        if keyword_columns and "source" not in keyword_columns:
+            conn.execute(
+                text("ALTER TABLE keywords ADD COLUMN source TEXT NOT NULL DEFAULT 'llm'")
+            )
+        if keyword_columns:
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_keywords_source "
+                    "ON keywords(session_id, source)"
+                )
+            )
 
 
 def get_session() -> Generator[Session, None, None]:

@@ -12,6 +12,26 @@ from app.services.llm import generate_with_prompt, generate_report
 logger = logging.getLogger(__name__)
 
 
+def _extract_html(raw_text: str) -> str:
+    """Extract the HTML document from common LLM wrapper text."""
+    text = (raw_text or "").strip()
+    if not text:
+        return ""
+
+    code_block = re.search(r"```(?:html)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
+    if code_block:
+        return code_block.group(1).strip()
+
+    html_start = re.search(r"<!doctype\s+html|<html\b", text, re.IGNORECASE)
+    if html_start:
+        html_end = re.search(r"</html\s*>", text, re.IGNORECASE)
+        if html_end and html_end.end() > html_start.start():
+            return text[html_start.start() : html_end.end()].strip()
+        return text[html_start.start() :].strip()
+
+    return text
+
+
 class ReportProcessor:
     """课堂还原报告处理器，提供直接调用入口。"""
 
@@ -20,7 +40,7 @@ class ReportProcessor:
 
     def generate_report(self, material: str) -> str:
         """根据课堂材料生成最终 HTML 报告（一次性生成）。"""
-        return generate_report(material)
+        return _extract_html(generate_report(material))
 
     def generate_report_with_agent(self, material: str, max_iters: int = 1) -> str:
         """根据课堂材料生成最终 HTML 报告。"""
@@ -212,7 +232,7 @@ class LectureReportAgent:
         report = self.improve_content(report)
         html = self.to_html(report)
         feedback = self.critique_html(html)
-        return self.refine_html(html, feedback)
+        return _extract_html(self.refine_html(html, feedback))
 
     def parse_steps(self, text: str) -> list[str]:
         """将模型输出结构化为步骤列表。"""

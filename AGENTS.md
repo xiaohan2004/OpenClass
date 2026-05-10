@@ -12,6 +12,7 @@
 后端依赖位于 `backend/requirements.txt`：
 ```bash
 pip install -r backend/requirements.txt
+python -m playwright install chromium
 ```
 本地启动（任一方式即可）：
 ```bash
