@@ -22,6 +22,7 @@ import argparse
 import base64
 import csv
 import json
+import math
 import os
 import random
 import shutil
@@ -30,7 +31,7 @@ import sys
 import tempfile
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -48,9 +49,10 @@ DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/api/v1"
 DEFAULT_LANGUAGE = "zh"
 DEFAULT_CHUNK_SECONDS = 5
 DEFAULT_CONCURRENCY = 100
-DEFAULT_RPM_LIMIT = 90
+DEFAULT_RPM_LIMIT = 100
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_RETRY_BACKOFF_SECONDS = 2.0
+DEFAULT_PREFETCH_CHUNKS = 30
 MEDIA_EXTENSIONS = {
     ".mp4",
     ".mkv",
@@ -182,6 +184,12 @@ def parse_args() -> argparse.Namespace:
         "--no-resume",
         action="store_true",
         help="Ignore existing temporary transcript checkpoint.",
+    )
+    parser.add_argument(
+        "--prefetch-chunks",
+        type=int,
+        default=DEFAULT_PREFETCH_CHUNKS,
+        help="Maximum pending chunk files kept ahead of completed ASR work.",
     )
     parser.add_argument(
         "--formats",
@@ -330,46 +338,28 @@ def get_video_duration(video_path: Path) -> float:
         raise RuntimeError(f"Cannot parse video duration: {result.stdout!r}") from exc
 
 
-def split_video_to_chunks(
+def extract_audio_chunk(
+    *,
     video_path: Path,
-    output_dir: Path,
-    chunk_seconds: int,
+    task: ChunkTask,
     audio_format: str,
-) -> list[Path]:
-    if not video_path.exists():
-        raise FileNotFoundError(f"Video file does not exist: {video_path}")
-    if chunk_seconds <= 0:
-        raise ValueError("--chunk-seconds must be greater than 0")
-
+) -> Path:
     if audio_format == "webm":
-        pattern = output_dir / "chunk_%05d.webm"
-        audio_args = [
-            "-c:a",
-            "libopus",
-            "-b:a",
-            "32k",
-            "-f",
-            "segment",
-            "-segment_format",
-            "webm",
-        ]
+        audio_args = ["-c:a", "libopus", "-b:a", "32k", "-f", "webm"]
     else:
-        pattern = output_dir / "chunk_%05d.wav"
-        audio_args = [
-            "-c:a",
-            "pcm_s16le",
-            "-f",
-            "segment",
-            "-segment_format",
-            "wav",
-        ]
+        audio_args = ["-c:a", "pcm_s16le", "-f", "wav"]
 
+    duration = max(0.0, task.end_time - task.start_time)
     command = [
         "ffmpeg",
         "-hide_banner",
         "-loglevel",
         "error",
         "-y",
+        "-ss",
+        f"{task.start_time:.3f}",
+        "-t",
+        f"{duration:.3f}",
         "-i",
         str(video_path),
         "-vn",
@@ -378,11 +368,7 @@ def split_video_to_chunks(
         "-ar",
         "16000",
         *audio_args,
-        "-segment_time",
-        str(chunk_seconds),
-        "-reset_timestamps",
-        "1",
-        str(pattern),
+        str(task.chunk_path),
     ]
     result = subprocess.run(
         command,
@@ -392,12 +378,13 @@ def split_video_to_chunks(
         check=False,
     )
     if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or "ffmpeg failed")
-
-    chunks = sorted(output_dir.glob(f"chunk_*.{audio_format}"))
-    if not chunks:
-        raise RuntimeError(f"ffmpeg produced no audio chunks for {video_path}")
-    return chunks
+        raise RuntimeError(
+            f"ffmpeg failed for chunk {task.index}/{task.total_chunks}: "
+            f"{result.stderr.strip() or 'unknown error'}"
+        )
+    if not task.chunk_path.exists():
+        task.chunk_path.touch()
+    return task.chunk_path
 
 
 def guess_audio_mime_type(audio_bytes: bytes) -> str:
@@ -605,48 +592,58 @@ def transcribe_chunk_task(
     rate_limiter: SmoothRateLimiter,
     max_retries: int,
     retry_backoff: float,
+    delete_chunk: bool,
 ) -> Segment | None:
     started_at = time.perf_counter()
     last_error: Exception | None = None
     text: str | None = None
-    for attempt in range(1, max_retries + 2):
-        try:
-            rate_limiter.wait()
-            text = transcribe_audio_chunk(
-                chunk_path=task.chunk_path,
-                api_key=api_key,
-                model=model,
-                base_url=base_url,
-                language=language,
-                enable_itn=enable_itn,
-            )
-            break
-        except EmptyTranscriptError:
-            elapsed = time.perf_counter() - started_at
-            print(
-                f"[{job_label}] chunk {task.index}/{task.total_chunks} "
-                f"{format_timestamp(task.start_time)}-{format_timestamp(task.end_time)} "
-                f"no transcript, recorded empty, elapsed={elapsed:.1f}s"
-            )
-            return Segment(
-                seq=task.index,
-                start_time=round(task.start_time, 3),
-                end_time=round(task.end_time, 3),
-                text="",
-            )
-        except Exception as exc:
-            last_error = exc
-            if attempt > max_retries:
+    try:
+        for attempt in range(1, max_retries + 2):
+            try:
+                rate_limiter.wait()
+                text = transcribe_audio_chunk(
+                    chunk_path=task.chunk_path,
+                    api_key=api_key,
+                    model=model,
+                    base_url=base_url,
+                    language=language,
+                    enable_itn=enable_itn,
+                )
                 break
-            sleep_seconds = retry_backoff * (2 ** (attempt - 1)) + random.uniform(0.0, 0.5)
-            print(
-                f"[{job_label}] chunk {task.index}/{task.total_chunks} "
-                f"failed attempt {attempt}/{max_retries + 1}: {exc}; "
-                f"retrying in {sleep_seconds:.1f}s"
-            )
-            time.sleep(sleep_seconds)
-    else:  # pragma: no cover - defensive guard
-        last_error = RuntimeError("unknown retry failure")
+            except EmptyTranscriptError:
+                elapsed = time.perf_counter() - started_at
+                print(
+                    f"[{job_label}] chunk {task.index}/{task.total_chunks} "
+                    f"{format_timestamp(task.start_time)}-{format_timestamp(task.end_time)} "
+                    f"no transcript, recorded empty, elapsed={elapsed:.1f}s"
+                )
+                return Segment(
+                    seq=task.index,
+                    start_time=round(task.start_time, 3),
+                    end_time=round(task.end_time, 3),
+                    text="",
+                )
+            except Exception as exc:
+                last_error = exc
+                if attempt > max_retries:
+                    break
+                sleep_seconds = (
+                    retry_backoff * (2 ** (attempt - 1)) + random.uniform(0.0, 0.5)
+                )
+                print(
+                    f"[{job_label}] chunk {task.index}/{task.total_chunks} "
+                    f"failed attempt {attempt}/{max_retries + 1}: {exc}; "
+                    f"retrying in {sleep_seconds:.1f}s"
+                )
+                time.sleep(sleep_seconds)
+        else:  # pragma: no cover - defensive guard
+            last_error = RuntimeError("unknown retry failure")
+    finally:
+        if delete_chunk:
+            try:
+                task.chunk_path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     if text is None:
         raise RuntimeError(
@@ -672,6 +669,7 @@ def transcribe_chunks_concurrently(
     *,
     chunk_tasks: list[ChunkTask],
     job: VideoJob,
+    temp_dir: Path,
     api_key: str,
     model: str,
     base_url: str,
@@ -681,6 +679,9 @@ def transcribe_chunks_concurrently(
     rpm_limit: int,
     max_retries: int,
     retry_backoff: float,
+    prefetch_chunks: int,
+    audio_format: str,
+    keep_chunks: bool,
     checkpoint_path: Path,
     completed_segments: list[Segment],
 ) -> list[Segment]:
@@ -688,18 +689,42 @@ def transcribe_chunks_concurrently(
         return sorted(completed_segments, key=lambda segment: segment.seq)
 
     job_label = job.row_label
-    worker_count = min(concurrency, len(chunk_tasks))
+    worker_count = min(concurrency, prefetch_chunks, len(chunk_tasks))
     rate_limiter = SmoothRateLimiter(rpm_limit)
     print(
         f"[{job_label}] chunks={len(chunk_tasks)}, "
-        f"concurrency={worker_count}, rpm_limit={rpm_limit}"
+        f"concurrency={worker_count}, rpm_limit={rpm_limit}, "
+        f"prefetch_chunks={prefetch_chunks}, temp_dir={temp_dir}"
     )
 
     segments: list[Segment] = list(completed_segments)
     errors: list[str] = []
+    pending: dict[Any, ChunkTask] = {}
+
+    def collect_done(done_futures: set[Any]) -> None:
+        for future in done_futures:
+            pending.pop(future, None)
+            try:
+                segment = future.result()
+            except Exception as exc:
+                errors.append(str(exc))
+                continue
+            if segment is not None:
+                segments.append(segment)
+                append_checkpoint_segment(checkpoint_path, job, segment)
+
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
-        futures = [
-            executor.submit(
+        for task in chunk_tasks:
+            while len(pending) >= prefetch_chunks:
+                done, _ = wait(pending.keys(), return_when=FIRST_COMPLETED)
+                collect_done(done)
+
+            extract_audio_chunk(
+                video_path=job.video_path,
+                task=task,
+                audio_format=audio_format,
+            )
+            future = executor.submit(
                 transcribe_chunk_task,
                 task=task,
                 job_label=job_label,
@@ -711,18 +736,16 @@ def transcribe_chunks_concurrently(
                 rate_limiter=rate_limiter,
                 max_retries=max_retries,
                 retry_backoff=retry_backoff,
+                delete_chunk=not keep_chunks,
             )
-            for task in chunk_tasks
-        ]
-        for future in as_completed(futures):
-            try:
-                segment = future.result()
-            except Exception as exc:
-                errors.append(str(exc))
-                continue
-            if segment is not None:
-                segments.append(segment)
-                append_checkpoint_segment(checkpoint_path, job, segment)
+            pending[future] = task
+
+            done_now = {future for future in pending if future.done()}
+            collect_done(done_now)
+
+        while pending:
+            done, _ = wait(pending.keys(), return_when=FIRST_COMPLETED)
+            collect_done(done)
 
     if errors:
         preview = "; ".join(errors[:3])
@@ -749,27 +772,26 @@ def transcribe_job(args: argparse.Namespace, job: VideoJob, api_key: str) -> Job
             raise ValueError("--max-retries must be greater than or equal to 0")
         if args.retry_backoff < 0:
             raise ValueError("--retry-backoff must be greater than or equal to 0")
+        if args.prefetch_chunks <= 0:
+            raise ValueError("--prefetch-chunks must be greater than 0")
 
         duration = get_video_duration(job.video_path)
 
         temp_dir_obj = tempfile.TemporaryDirectory(prefix="dashscope_asr_chunks_")
         temp_dir = Path(temp_dir_obj.name)
-        chunks = split_video_to_chunks(
-            job.video_path,
-            temp_dir,
-            args.chunk_seconds,
-            args.audio_format,
-        )
+        if args.chunk_seconds <= 0:
+            raise ValueError("--chunk-seconds must be greater than 0")
+        total_chunks = max(1, math.ceil(duration / args.chunk_seconds))
 
         chunk_tasks = [
             ChunkTask(
                 index=index,
-                chunk_path=chunk_path,
+                chunk_path=temp_dir / f"chunk_{index:05d}.{args.audio_format}",
                 start_time=float((index - 1) * args.chunk_seconds),
                 end_time=min(float(index * args.chunk_seconds), duration),
-                total_chunks=len(chunks),
+                total_chunks=total_chunks,
             )
-            for index, chunk_path in enumerate(chunks, start=1)
+            for index in range(1, total_chunks + 1)
         ]
         checkpoint_path = output_dir / f"{job.output_stem}.transcript.tmp.jsonl"
         if args.no_resume and checkpoint_path.exists():
@@ -793,6 +815,7 @@ def transcribe_job(args: argparse.Namespace, job: VideoJob, api_key: str) -> Job
         segments = transcribe_chunks_concurrently(
             chunk_tasks=remaining_tasks,
             job=job,
+            temp_dir=temp_dir,
             api_key=api_key,
             model=args.model,
             base_url=args.base_url,
@@ -802,6 +825,9 @@ def transcribe_job(args: argparse.Namespace, job: VideoJob, api_key: str) -> Job
             rpm_limit=args.rpm_limit,
             max_retries=args.max_retries,
             retry_backoff=args.retry_backoff,
+            prefetch_chunks=args.prefetch_chunks,
+            audio_format=args.audio_format,
+            keep_chunks=args.keep_chunks,
             checkpoint_path=checkpoint_path,
             completed_segments=completed_segments,
         )
