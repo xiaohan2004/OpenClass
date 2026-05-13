@@ -11,8 +11,13 @@ TESTS_DIR = Path(__file__).parent
 PROJECT_ROOT = TESTS_DIR.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.config import SYSTEM_PROMPT_QUESTION, SYSTEM_PROMPT_SEGMENT_SUMMARY
+from app.config import (
+    SYSTEM_PROMPT_QUESTION,
+    SYSTEM_PROMPT_QUESTION_QUALITY,
+    SYSTEM_PROMPT_SEGMENT_SUMMARY,
+)
 from app.services.llm import (
+    evaluate_question_quality,
     generate_keywords,
     generate_knowledge,
     generate_quiz,
@@ -111,6 +116,34 @@ class TestLLMIntegration(unittest.TestCase):
             max_tokens=1024,
             temperature=1.7,
         )
+        mock_record_usage.assert_called_once()
+
+    @patch("app.services.llm.record_service_usage")
+    @patch("app.services.llm.get_llm_client")
+    def test_evaluate_question_quality_success(self, mock_get_client, mock_record_usage):
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = '{"score":0.873}'
+        mock_response.usage = MagicMock(prompt_tokens=20, completion_tokens=8)
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_get_client.return_value = mock_client
+
+        with patch("app.services.llm.get_settings") as mock_settings:
+            mock_settings.return_value.model_name = "test-model"
+            mock_settings.return_value.max_tokens = 1024
+            mock_settings.return_value.temperature = 1.7
+
+            result = evaluate_question_quality("什么是函数？", self.test_context)
+
+        self.assertEqual(result, '{"score":0.873}')
+        called_messages = mock_client.chat.completions.create.call_args.kwargs[
+            "messages"
+        ]
+        self.assertEqual(called_messages[0]["content"], SYSTEM_PROMPT_QUESTION_QUALITY)
+        self.assertIn("【问题】", called_messages[1]["content"])
+        self.assertIn("什么是函数？", called_messages[1]["content"])
+        self.assertIn(self.test_context, called_messages[1]["content"])
         mock_record_usage.assert_called_once()
 
     @patch("app.services.llm.record_service_usage")

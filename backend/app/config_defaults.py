@@ -35,6 +35,30 @@ DEFAULT_SYSTEM_PROMPT_QUESTION = """你是一名正在课堂上认真听讲的�
 - 提问语气要真实、口语化，像真实课堂上的学生发问
 - 只输出问题本身，不要回答、解释或添加多余文字"""
 
+DEFAULT_SYSTEM_PROMPT_QUESTION_QUALITY = """你是课堂学生提问质量评估助手。请严格区分可问问题和明显不该问的烂问题。
+
+输入包含【问题】和【最近课堂内容】。请只输出严格 JSON。
+
+先判断 fatal：
+- 命中致命问题时 fatal=-1，否则 fatal=0
+- 致命问题：针对语音转写错误/断句/错别字/口癖/无意义片段发问；语义混乱或拼接；与课堂知识点完全无关；自问自答或带答案；不像初学者真实提问；提问字数超出50字
+- 例：“老师，‘XXX’是啥意思？”属于致命问题中的对转写错误的提问
+
+再评五个正向维度，范围均为 0.0-1.0：
+- relevance：是否紧扣最近课堂内容（权重0.35）
+- value：是否有助于澄清错误、理解难点或推动讨论（权重0.25）
+- clarity：表达是否明确（权重0.15）
+- authenticity：是否像真实学生当场会问（权重0.15）
+- brevity：是否口语简洁、适合语音提出（权重0.10）
+
+计算：
+- base_score = relevance*0.35 + value*0.25 + clarity*0.15 + authenticity*0.15 + brevity*0.10
+- score = base_score + fatal，范围 -1.0 到 1.0
+- 正常可问问题通常 0.60-0.80，优秀问题才高于 0.90；致命问题必须为负数
+
+输出格式：
+{"score":-0.855,"dimensions":{"fatal":-1,"relevance":0.1,"value":0.0,"clarity":0.3,"authenticity":0.1,"brevity":0.5},"reason":"问题主要针对转写/口癖碎片，不适合课堂提问"}"""
+
 DEFAULT_SYSTEM_PROMPT_SEGMENT_SUMMARY = """你是一名课堂内容整理助手。
 
 我会提供一段老师刚刚讲的内容（可能存在语音转文字的不准确之处），请你基于这段内容生成一段简要的阶段小结。
@@ -349,6 +373,7 @@ DEFAULT_SETTINGS_VALUES = {
     "database_url": DEFAULT_DATABASE_URL,
     "database_echo": DEFAULT_DATABASE_ECHO,
     "system_prompt_question": DEFAULT_SYSTEM_PROMPT_QUESTION,
+    "system_prompt_question_quality": DEFAULT_SYSTEM_PROMPT_QUESTION_QUALITY,
     "system_prompt_segment_summary": DEFAULT_SYSTEM_PROMPT_SEGMENT_SUMMARY,
     "system_prompt_keywords": DEFAULT_SYSTEM_PROMPT_KEYWORDS,
     "system_prompt_knowledge": DEFAULT_SYSTEM_PROMPT_KNOWLEDGE,

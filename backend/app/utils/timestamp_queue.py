@@ -115,20 +115,39 @@ class TimestampQueue:
 class QuestionTimestampQueue(TimestampQueue):
     """问题时间戳队列，队列数据结构为 `List[str]`"""
 
-    def add(self, timestamp: float, data: List[str]) -> List[Tuple[float, List[str]]]:
-        return cast(List[Tuple[float, List[str]]], super().add(timestamp, data))
+    def add(self, timestamp: float, data: List[Any]) -> List[Tuple[float, List[Any]]]:
+        return cast(List[Tuple[float, List[Any]]], super().add(timestamp, data))
 
-    def get_latest_batch(self) -> Optional[Tuple[float, List[str]]]:
+    def get_latest_batch(self) -> Optional[Tuple[float, List[Any]]]:
         """获取最新的一批问题"""
-        return cast(Optional[Tuple[float, List[str]]], super().get_latest())
+        return cast(Optional[Tuple[float, List[Any]]], super().get_latest())
+
+    def get_batches(self) -> List[Tuple[float, List[Any]]]:
+        """获取当前全部问题批次，按时间从旧到新排序。"""
+        with self._lock:
+            return [(timestamp, list(batch_data)) for timestamp, batch_data in self._queue]
 
     def get_all_data_flat(self) -> List[str]:
         """获取队列中所有问题的扁平列表"""
         with self._lock:
             all_data: List[str] = []
             for _, batch_data in self._queue:
-                all_data.extend(cast(List[str], batch_data))
+                for item in cast(List[Any], batch_data):
+                    all_data.append(getattr(item, "text", str(item)))
             return all_data
+
+    def remove_first_text(self, text: str) -> bool:
+        """按文本移除第一个匹配的问题。"""
+        with self._lock:
+            for batch_index, (_, batch_data) in enumerate(self._queue):
+                items = cast(List[Any], batch_data)
+                for item_index, item in enumerate(items):
+                    if getattr(item, "text", str(item)) == text:
+                        items.pop(item_index)
+                        if not items:
+                            self._queue.pop(batch_index)
+                        return True
+            return False
 
 
 class TextTimestampQueue(TimestampQueue):

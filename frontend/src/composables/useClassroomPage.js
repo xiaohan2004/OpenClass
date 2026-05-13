@@ -453,6 +453,14 @@ export function useClassroomPage() {
     return `${hh}:${mm}:${ss}`
   }
 
+  function formatQuestionScore(score) {
+    const numericScore = Number(score)
+    if (!Number.isFinite(numericScore)) {
+      return '未评分'
+    }
+    return numericScore.toFixed(3)
+  }
+
   function scrollQueueToBottom() {
     if (queueFeed.value) {
       queueFeed.value.scrollTop = queueFeed.value.scrollHeight
@@ -849,7 +857,8 @@ export function useClassroomPage() {
             order: '',
             text: item.text,
             time: formatTime(item.start_time || item.created_at || now),
-            score: item.score
+            score: item.score,
+            scoreLabel: formatQuestionScore(item.score)
           }))
 
         const merged = [...queuedQuestions.value, ...nextItems]
@@ -1312,7 +1321,8 @@ export function useClassroomPage() {
         order: `Q${index + 1}`,
         text: item.text,
         time: formatTime(item.start_time || item.created_at),
-        score: item.score
+        score: item.score,
+        scoreLabel: formatQuestionScore(item.score)
       }))
 
     askedQuestionsHistory.value = sortedQuestionList

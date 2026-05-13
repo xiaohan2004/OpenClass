@@ -1411,11 +1411,26 @@ button {
   gap: 4px;
 }
 
+.queue-item__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .queue-item__time {
   color: var(--text-soft);
   font-size: 0.82rem;
   font-weight: 600;
   letter-spacing: 0.03em;
+}
+
+.queue-item__score {
+  color: #466f4e;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .stat-row {

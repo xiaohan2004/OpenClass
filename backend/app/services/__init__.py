@@ -2,6 +2,7 @@
 
 from .asr import ASRService, get_asr_service
 from .llm import (
+    evaluate_question_quality,
     generate_with_prompt,
     generate_keywords,
     generate_knowledge,
@@ -16,6 +17,7 @@ __all__ = [
     "ASRService",
     "TTSService",
     "generate_question",
+    "evaluate_question_quality",
     "generate_with_prompt",
     "generate_keywords",
     "generate_knowledge",

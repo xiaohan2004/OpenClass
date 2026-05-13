@@ -26,6 +26,7 @@ from app.core.main_flow import (
     handle_audio,
     start_background_tasks,
 )
+from app.core.question import ScoredQuestion
 from app.db import init_db
 from app.db.crud import (
     create_course,
@@ -153,13 +154,16 @@ class TestBackgroundTasks(unittest.IsolatedAsyncioTestCase):
                         with patch(
                             "app.core.main_flow._persist_questions",
                             return_value=[
-                                ("问题一", 11, 1712995600),
-                                ("问题二", 12, 1712995601),
+                                ("问题一", 0.8, 11, 1712995600),
+                                ("问题二", 0.9, 12, 1712995601),
                             ],
                         ):
                             with patch(
-                                "app.core.main_flow.question_processor.generate_questions",
-                                return_value=["问题一", "问题二"],
+                                "app.core.main_flow.question_processor.generate_scored_questions",
+                                return_value=[
+                                    ScoredQuestion("问题一", 0.8),
+                                    ScoredQuestion("问题二", 0.9),
+                                ],
                             ) as mock_gen_questions:
                                 await _background_tasks_processing(context, safe_ws)
 
@@ -180,6 +184,9 @@ class TestBackgroundTasks(unittest.IsolatedAsyncioTestCase):
                                 self.assertTrue(question_payload["data"]["items"])
                                 self.assertIn(
                                     "created_at", question_payload["data"]["items"][0]
+                                )
+                                self.assertIn(
+                                    "score", question_payload["data"]["items"][0]
                                 )
 
     def test_handle_task_result_catches_exception(
@@ -312,8 +319,11 @@ class TestMainFlowDatabaseIntegration(unittest.IsolatedAsyncioTestCase):
             return_value={"text": "数据库小结", "start": 0, "end": 2},
         ):
             with patch(
-                "app.core.main_flow.question_processor.generate_questions",
-                return_value=["数据库问题一", "数据库问题二"],
+                "app.core.main_flow.question_processor.generate_scored_questions",
+                return_value=[
+                    ScoredQuestion("数据库问题一", 0.8),
+                    ScoredQuestion("数据库问题二", 0.9),
+                ],
             ):
                 await _background_tasks_processing(context, safe_ws)
 
@@ -329,6 +339,7 @@ class TestMainFlowDatabaseIntegration(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 {item.text for item in questions}, {"数据库问题一", "数据库问题二"}
             )
+            self.assertEqual({item.score for item in questions}, {0.8, 0.9})
             self.assertTrue(all(item.created_at is not None for item in questions))
 
 

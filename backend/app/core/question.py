@@ -4,16 +4,36 @@
 基于统一课堂上下文，实现并发生成学生提问，维护提问队列
 """
 
+import json
 import logging
 import time
 import random
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from decimal import Decimal, ROUND_HALF_UP
+from typing import Any
 
 from app.config import get_settings
-from app.services.llm import generate_question
+from app.services.llm import evaluate_question_quality, generate_question
 from app.utils.timestamp_queue import QuestionTimestampQueue
 
 logger = logging.getLogger(__name__)
+
+RECENCY_WEIGHT = 0.55
+QUALITY_WEIGHT = 0.45
+QUESTION_QUALITY_DIMENSION_WEIGHTS = {
+    "relevance": 0.35,
+    "value": 0.25,
+    "clarity": 0.15,
+    "authenticity": 0.15,
+    "brevity": 0.10,
+}
+
+
+@dataclass(frozen=True)
+class ScoredQuestion:
+    text: str
+    score: float
 
 
 class QuestionProcessor:
@@ -57,7 +77,9 @@ class QuestionProcessor:
         )
         self._config_loaded_at = time.monotonic()
 
-    def generate_questions(self, context: str, count: int = None) -> list[str]:
+    def generate_scored_questions(
+        self, context: str, count: int = None
+    ) -> list[ScoredQuestion]:
         """
         基于当前课堂上下文并发生成提问
 
@@ -82,7 +104,7 @@ class QuestionProcessor:
         logger.debug("上下文长度: %d字", len(context))
 
         batch_timestamp = time.time()
-        batch_questions = []
+        batch_questions: list[ScoredQuestion] = []
 
         with ThreadPoolExecutor(max_workers=count) as executor:
             futures = [
@@ -97,7 +119,8 @@ class QuestionProcessor:
 
                 question = future.result().strip()
                 if question:
-                    batch_questions.append(question)
+                    score = self._evaluate_question_score(question, context)
+                    batch_questions.append(ScoredQuestion(text=question, score=score))
 
         if batch_questions:
             removed_batches = self._question_queue.add(batch_timestamp, batch_questions)
@@ -107,7 +130,10 @@ class QuestionProcessor:
                     logger.debug(
                         "队列已满，删除最旧批次 %.3f: %s",
                         removed_timestamp,
-                        ", ".join(removed_questions),
+                        ", ".join(
+                            getattr(question, "text", str(question))
+                            for question in removed_questions
+                        ),
                     )
 
             logger.info(
@@ -117,30 +143,179 @@ class QuestionProcessor:
         logger.info("本轮生成 %d 个有效问题", len(batch_questions))
         return batch_questions
 
+    def generate_questions(self, context: str, count: int = None) -> list[str]:
+        """兼容旧调用方：生成带评分问题，但只返回文本列表。"""
+        return [
+            question.text
+            for question in self.generate_scored_questions(context=context, count=count)
+        ]
+
+    def _evaluate_question_score(self, question: str, context: str) -> float:
+        """评估问题质量，失败时返回低默认分。"""
+        try:
+            raw_result = evaluate_question_quality(question, context)
+            return self._parse_quality_score(raw_result)
+        except Exception as exc:
+            logger.warning("问题质量评分失败，使用默认低分: %s", exc)
+            return 0.0
+
+    def _parse_quality_score(self, raw_result: str) -> float:
+        """从 LLM 返回中尽力解析 score，并归一到 -1.0-1.0。"""
+        payload = self._parse_quality_payload(raw_result)
+        score = payload.get("score")
+        if not isinstance(score, (int, float)):
+            raise ValueError("评分 JSON 缺少数字 score 字段")
+
+        reported_score = float(score)
+        calculated_score = self._calculate_quality_score_from_dimensions(payload)
+        if calculated_score is None:
+            normalized_score = self._apply_fatal_dimension(reported_score, payload)
+        else:
+            normalized_score = calculated_score
+            if abs(reported_score - calculated_score) > 0.02:
+                logger.warning(
+                    "LLM 问题评分总分与维度不一致: reported=%.3f calculated=%.3f；后端始终以维度重算分为准",
+                    reported_score,
+                    calculated_score,
+                )
+        normalized_score = max(-1.0, min(1.0, normalized_score))
+        return float(
+            Decimal(str(normalized_score)).quantize(
+                Decimal("0.001"), rounding=ROUND_HALF_UP
+            )
+        )
+
+    def _calculate_quality_score_from_dimensions(
+        self, payload: dict[str, Any]
+    ) -> float | None:
+        """按 fatal + 五个正向维度重算最终分；维度不完整时返回 None。"""
+        dimensions = payload.get("dimensions")
+        if not isinstance(dimensions, dict):
+            return None
+
+        fatal = dimensions.get("fatal")
+        if not isinstance(fatal, (int, float)):
+            return None
+        fatal_score = -1.0 if float(fatal) < 0 else 0.0
+
+        base_score = 0.0
+        for dimension_name, weight in QUESTION_QUALITY_DIMENSION_WEIGHTS.items():
+            dimension_score = dimensions.get(dimension_name)
+            if not isinstance(dimension_score, (int, float)):
+                return None
+            clamped_dimension_score = max(0.0, min(1.0, float(dimension_score)))
+            base_score += weight * clamped_dimension_score
+
+        return base_score + fatal_score
+
+    def _apply_fatal_dimension(self, score: float, payload: dict[str, Any]) -> float:
+        """fatal 维度为 -1 时，确保最终分数带上致命惩罚。"""
+        dimensions = payload.get("dimensions")
+        if not isinstance(dimensions, dict):
+            return score
+
+        fatal = dimensions.get("fatal")
+        if not isinstance(fatal, (int, float)) or fatal >= 0:
+            return score
+
+        if score < 0:
+            return score
+
+        return score + max(-1.0, float(fatal))
+
+    def _parse_quality_payload(self, raw_result: str) -> dict[str, Any]:
+        if not isinstance(raw_result, str) or not raw_result.strip():
+            raise ValueError("评分结果为空")
+
+        text = raw_result.strip()
+        candidates = [text]
+
+        if text.startswith("```"):
+            stripped = text.strip("`").strip()
+            if stripped.lower().startswith("json"):
+                stripped = stripped[4:].strip()
+            candidates.append(stripped)
+
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and start < end:
+            candidates.append(text[start : end + 1])
+
+        last_error: Exception | None = None
+        for candidate in candidates:
+            try:
+                payload = json.loads(candidate)
+                if isinstance(payload, dict):
+                    return payload
+            except json.JSONDecodeError as exc:
+                last_error = exc
+
+        raise ValueError(f"无法解析评分 JSON: {last_error}")
+
     def get_questions_flat(self) -> list[str]:
         """获取当前问题队列中的所有问题（展开后的问题列表）"""
         return self._question_queue.get_all_data_flat()
 
     def get_latest_question_random(self) -> str | None:
-        """
-        从最新批次的问题中随机选择一个
-
-        Returns:
-            随机选择的问题，如果没有问题则返回 None
-        """
+        """从当前队列中按新鲜度和质量分综合选择一个问题。"""
         self._sync_config()
-        latest_batch = self._question_queue.get_latest_batch()
+        batches = self._question_queue.get_batches()
 
-        if latest_batch is None:
+        if not batches:
             logger.debug("问题队列为空")
             return None
 
-        _, questions = latest_batch
+        batch_count = len(batches)
+        best_score = -1.0
+        best_questions: list[ScoredQuestion] = []
+        skipped_fatal_count = 0
 
-        if not questions:
-            logger.debug("最新批次无有效问题")
+        for batch_index in range(batch_count - 1, -1, -1):
+            _, questions = batches[batch_index]
+            recency_score = (
+                1.0 if batch_count == 1 else batch_index / (batch_count - 1)
+            )
+            max_possible_score = RECENCY_WEIGHT * recency_score + QUALITY_WEIGHT
+
+            if best_score >= 0 and max_possible_score < best_score:
+                logger.debug(
+                    "旧批次理论最高分 %.3f 低于当前最佳 %.3f，提前停止扫描",
+                    max_possible_score,
+                    best_score,
+                )
+                break
+
+            for question in questions:
+                scored_question = self._coerce_scored_question(question)
+                if scored_question.score < 0:
+                    skipped_fatal_count += 1
+                    continue
+
+                combined_score = (
+                    RECENCY_WEIGHT * recency_score
+                    + QUALITY_WEIGHT * scored_question.score
+                )
+                if combined_score > best_score:
+                    best_score = combined_score
+                    best_questions = [scored_question]
+                elif combined_score == best_score:
+                    best_questions.append(scored_question)
+
+        if not best_questions:
+            logger.debug("问题队列无可提问问题，已跳过 %d 个负分问题", skipped_fatal_count)
             return None
 
-        selected = random.choice(questions)
-        logger.info("从最新批次随机选择问题: %s", selected)
-        return selected
+        selected = self._coerce_scored_question(random.choice(best_questions))
+        self._question_queue.remove_first_text(selected.text)
+        logger.info(
+            "按新鲜度和质量分选择问题: %s (score=%.3f, combined=%.3f)",
+            selected.text,
+            selected.score,
+            best_score,
+        )
+        return selected.text
+
+    def _coerce_scored_question(self, question: object) -> ScoredQuestion:
+        if isinstance(question, ScoredQuestion):
+            return question
+        return ScoredQuestion(text=str(question), score=0.0)

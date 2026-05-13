@@ -11,6 +11,7 @@ from openai import OpenAI
 from app.config import (
     SYSTEM_PROMPT_KEYWORDS,
     SYSTEM_PROMPT_QUESTION,
+    SYSTEM_PROMPT_QUESTION_QUALITY,
     SYSTEM_PROMPT_SEGMENT_SUMMARY,
     SYSTEM_PROMPT_KNOWLEDGE,
     SYSTEM_PROMPT_QUIZ,
@@ -135,6 +136,29 @@ def generate_question(context: str) -> str:
         )
     except Exception as e:
         logger.error("问题生成失败: %s", e)
+        raise
+
+
+def evaluate_question_quality(question: str, context: str) -> str:
+    """调用 LLM 评估问题质量，返回约定的 JSON 字符串。"""
+    try:
+        settings = get_settings()
+        system_prompt = _resolve_string_setting(
+            getattr(settings, "system_prompt_question_quality", None),
+            SYSTEM_PROMPT_QUESTION_QUALITY,
+        )
+        evaluation_context = (
+            "【问题】\n"
+            f"{question}\n\n"
+            "【最近课堂内容】\n"
+            f"{context}"
+        )
+        return generate_with_prompt(
+            context=evaluation_context,
+            system_prompt=system_prompt,
+        )
+    except Exception as e:
+        logger.error("问题质量评估失败: %s", e)
         raise
 
 

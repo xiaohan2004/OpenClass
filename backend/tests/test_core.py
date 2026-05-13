@@ -15,7 +15,7 @@ from app.core.classcontext import ClassContext
 from app.core.knowledge import KnowledgeProcessor
 from app.core.keyword import KeywordProcessor
 from app.core.keyword_extraction_algorithm import KeywordScore
-from app.core.question import QuestionProcessor
+from app.core.question import QuestionProcessor, ScoredQuestion
 from app.core.quiz import QuizProcessor
 from app.core.report import LectureReportAgent, ReportProcessor
 from app.core.segment_summary import SegmentSummaryProcessor
@@ -34,9 +34,13 @@ class TestQuestionProcessor(unittest.TestCase):
         self.assertEqual(result, [])
         self.assertEqual(self.processor.get_questions_flat(), [])
 
+    @patch("app.core.question.evaluate_question_quality")
     @patch("app.core.question.generate_question")
-    def test_generate_questions_success(self, mock_generate_question):
+    def test_generate_questions_success(
+        self, mock_generate_question, mock_evaluate_question_quality
+    ):
         mock_generate_question.side_effect = ["问题一", "问题二", "问题三"]
+        mock_evaluate_question_quality.return_value = '{"score":0.876}'
 
         result = self.processor.generate_questions("课堂上下文", count=3)
 
@@ -44,10 +48,15 @@ class TestQuestionProcessor(unittest.TestCase):
         self.assertEqual(
             self.processor.get_questions_flat(), ["问题一", "问题二", "问题三"]
         )
+        self.assertEqual(mock_evaluate_question_quality.call_count, 3)
 
+    @patch("app.core.question.evaluate_question_quality")
     @patch("app.core.question.generate_question")
-    def test_generate_questions_uses_default_worker_count(self, mock_generate_question):
+    def test_generate_questions_uses_default_worker_count(
+        self, mock_generate_question, mock_evaluate_question_quality
+    ):
         mock_generate_question.return_value = "默认问题"
+        mock_evaluate_question_quality.return_value = '{"score":0.5}'
 
         with patch("app.core.question.get_settings") as mock_get_settings:
             mock_get_settings.return_value.question_concurrent_workers = 2
@@ -56,19 +65,100 @@ class TestQuestionProcessor(unittest.TestCase):
         self.assertEqual(result, ["默认问题", "默认问题"])
         self.assertEqual(mock_generate_question.call_count, 2)
 
-    @patch("app.core.question.generate_question")
-    @patch("app.core.question.random.choice")
-    def test_get_latest_question_random(self, mock_choice, mock_generate_question):
-        mock_generate_question.side_effect = ["旧问题", "新问题"]
-
-        self.processor.generate_questions("旧上下文", count=1)
-        self.processor.generate_questions("新上下文", count=1)
-        mock_choice.return_value = "新问题"
+    def test_get_latest_question_random_uses_recency_and_score(self):
+        self.processor._question_queue.add(
+            1.0, [ScoredQuestion(text="旧高分问题", score=1.0)]
+        )
+        self.processor._question_queue.add(
+            2.0, [ScoredQuestion(text="中间高分问题", score=1.0)]
+        )
+        self.processor._question_queue.add(
+            3.0, [ScoredQuestion(text="新低分问题", score=0.0)]
+        )
 
         result = self.processor.get_latest_question_random()
 
-        self.assertEqual(result, "新问题")
-        mock_choice.assert_called_once_with(["新问题"])
+        self.assertEqual(result, "中间高分问题")
+        self.assertEqual(
+            self.processor.get_questions_flat(), ["旧高分问题", "新低分问题"]
+        )
+
+    def test_get_latest_question_random_skips_negative_scores(self):
+        self.processor._question_queue.add(
+            1.0, [ScoredQuestion(text="旧可问问题", score=0.8)]
+        )
+        self.processor._question_queue.add(
+            2.0, [ScoredQuestion(text="新致命问题", score=-0.1)]
+        )
+
+        result = self.processor.get_latest_question_random()
+
+        self.assertEqual(result, "旧可问问题")
+
+    def test_get_latest_question_random_returns_none_when_all_scores_negative(self):
+        self.processor._question_queue.add(
+            1.0, [ScoredQuestion(text="致命问题一", score=-0.8)]
+        )
+        self.processor._question_queue.add(
+            2.0, [ScoredQuestion(text="致命问题二", score=-0.1)]
+        )
+
+        result = self.processor.get_latest_question_random()
+
+        self.assertIsNone(result)
+
+    def test_parse_quality_score_rounds_and_clamps(self):
+        self.assertEqual(self.processor._parse_quality_score('{"score":1.23456}'), 1.0)
+        self.assertEqual(
+            self.processor._parse_quality_score('```json\n{"score":0.8765}\n```'),
+            0.877,
+        )
+        self.assertEqual(
+            self.processor._parse_quality_score('结果如下：{"score":-1.234}'),
+            -1.0,
+        )
+
+    def test_parse_quality_score_applies_fatal_dimension(self):
+        self.assertEqual(
+            self.processor._parse_quality_score(
+                '{"score":0.845,"dimensions":{"fatal":-1}}'
+            ),
+            -0.155,
+        )
+        self.assertEqual(
+            self.processor._parse_quality_score(
+                '{"score":-0.92,"dimensions":{"fatal":-1}}'
+            ),
+            -0.92,
+        )
+
+    def test_parse_quality_score_recalculates_from_dimensions(self):
+        raw = (
+            '{"score":0.999,"dimensions":{'
+            '"fatal":0,'
+            '"relevance":0.8,'
+            '"value":0.6,'
+            '"clarity":1.0,'
+            '"authenticity":0.4,'
+            '"brevity":0.5'
+            '}}'
+        )
+
+        self.assertEqual(self.processor._parse_quality_score(raw), 0.69)
+
+    def test_parse_quality_score_recalculates_negative_fatal_score(self):
+        raw = (
+            '{"score":0.845,"dimensions":{'
+            '"fatal":-1,'
+            '"relevance":0.1,'
+            '"value":0.0,'
+            '"clarity":0.3,'
+            '"authenticity":0.1,'
+            '"brevity":0.5'
+            '}}'
+        )
+
+        self.assertEqual(self.processor._parse_quality_score(raw), -0.855)
 
 
 class TestClassContext(unittest.TestCase):

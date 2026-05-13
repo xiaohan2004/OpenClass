@@ -15,6 +15,7 @@ from app.config_defaults import (
     DEFAULT_SYSTEM_PROMPT_KEYWORDS,
     DEFAULT_SYSTEM_PROMPT_QUIZ,
     DEFAULT_SYSTEM_PROMPT_QUESTION,
+    DEFAULT_SYSTEM_PROMPT_QUESTION_QUALITY,
     DEFAULT_SYSTEM_PROMPT_SEGMENT_SUMMARY,
     DEFAULT_SYSTEM_PROMPT_REPORT,
 )
@@ -62,6 +63,9 @@ class Settings(BaseModel):
 
     # 提示词配置
     system_prompt_question: str = DEFAULT_SETTINGS_VALUES["system_prompt_question"]
+    system_prompt_question_quality: str = DEFAULT_SETTINGS_VALUES[
+        "system_prompt_question_quality"
+    ]
     system_prompt_segment_summary: str = DEFAULT_SETTINGS_VALUES[
         "system_prompt_segment_summary"
     ]
@@ -132,6 +136,7 @@ get_settings.cache_clear = _cache_clear  # type: ignore[attr-defined]
 
 
 SYSTEM_PROMPT_QUESTION = DEFAULT_SYSTEM_PROMPT_QUESTION
+SYSTEM_PROMPT_QUESTION_QUALITY = DEFAULT_SYSTEM_PROMPT_QUESTION_QUALITY
 SYSTEM_PROMPT_SEGMENT_SUMMARY = DEFAULT_SYSTEM_PROMPT_SEGMENT_SUMMARY
 SYSTEM_PROMPT_KEYWORDS = DEFAULT_SYSTEM_PROMPT_KEYWORDS
 SYSTEM_PROMPT_KNOWLEDGE = DEFAULT_SYSTEM_PROMPT_KNOWLEDGE

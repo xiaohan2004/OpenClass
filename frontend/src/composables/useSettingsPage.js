@@ -96,6 +96,7 @@ const cardDefs = [
         column: 'left',
         fields: [
             { key: 'system_prompt_question', label: '提问提示词', kind: 'longtext-modal' },
+            { key: 'system_prompt_question_quality', label: '问题评分提示词', kind: 'longtext-modal' },
             { key: 'system_prompt_segment_summary', label: '总结提示词', kind: 'longtext-modal' },
             { key: 'system_prompt_keywords', label: '关键词提示词', kind: 'longtext-modal' },
             { key: 'system_prompt_knowledge', label: '知识点提示词', kind: 'longtext-modal' },

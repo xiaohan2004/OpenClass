@@ -302,7 +302,10 @@
                 <span>{{ question.order }}</span>
                 <div class="queue-item__content">
                   <p>{{ question.text }}</p>
-                  <small class="queue-item__time">{{ question.time || '--:--:--' }}</small>
+                  <div class="queue-item__meta">
+                    <small class="queue-item__time">{{ question.time || '--:--:--' }}</small>
+                    <small class="queue-item__score">评分 {{ question.scoreLabel || '未评分' }}</small>
+                  </div>
                 </div>
               </article>
               <p v-if="queuedQuestions.length === 0" class="empty-text">暂无待提问问题</p>

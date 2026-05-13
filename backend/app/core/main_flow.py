@@ -29,7 +29,7 @@ from app.utils.websocket_utils import SafeWebSocket
 from app.services.asr import get_asr_service
 from app.services.tts import get_tts_service
 from .classcontext import ClassContext
-from .question import QuestionProcessor
+from .question import QuestionProcessor, ScoredQuestion
 from .keyword import KeywordProcessor
 from .knowledge import KnowledgeProcessor
 from .quiz import QuizProcessor
@@ -157,7 +157,7 @@ async def _background_tasks_processing(
     summary_text, questions = await asyncio.gather(
         asyncio.to_thread(context.generate_summary_if_needed),
         asyncio.to_thread(
-            question_processor.generate_questions,
+            question_processor.generate_scored_questions,
             context.get_questioning_texts(),
         ),
     )
@@ -189,7 +189,7 @@ async def _background_tasks_processing(
         )
 
     if questions:
-        question_records: list[tuple[str, int, int]] = []
+        question_records: list[tuple[str, float, int, int]] = []
         if context.session_id is not None:
             question_records = await asyncio.to_thread(
                 _persist_questions,
@@ -200,7 +200,7 @@ async def _background_tasks_processing(
             context.register_generated_questions(
                 [
                     (question_text, question_id)
-                    for question_text, question_id, _ in question_records
+                    for question_text, _, question_id, _ in question_records
                 ]
             )
 
@@ -212,11 +212,12 @@ async def _background_tasks_processing(
                         {
                             "id": question_id,
                             "text": question_text,
+                            "score": score,
                             "created_at": created_at,
                         }
-                        for question_text, question_id, created_at in question_records
+                        for question_text, score, question_id, created_at in question_records
                     ],
-                    "questions": questions,
+                    "questions": [question.text for question in questions],
                 },
             }
         )
@@ -354,15 +355,27 @@ def _persist_summary(
 
 def _persist_questions(
     session_id: int,
-    questions: list[str],
+    questions: list[ScoredQuestion],
     transcript_ids: list[int],
-) -> list[tuple[str, int, int]]:
+) -> list[tuple[str, float, int, int]]:
     """将生成的问题及其映射写入数据库。"""
-    created_questions: list[tuple[str, int, int]] = []
+    created_questions: list[tuple[str, float, int, int]] = []
     with Session(get_engine()) as db:
-        for question_text in questions:
-            question = create_question(db, session_id=session_id, text=question_text)
-            created_questions.append((question_text, question.id, question.created_at))
+        for scored_question in questions:
+            question = create_question(
+                db,
+                session_id=session_id,
+                text=scored_question.text,
+                score=scored_question.score,
+            )
+            created_questions.append(
+                (
+                    scored_question.text,
+                    scored_question.score,
+                    question.id,
+                    question.created_at,
+                )
+            )
             for transcript_id in transcript_ids:
                 link_question_to_transcript(db, question.id, transcript_id)
     return created_questions
