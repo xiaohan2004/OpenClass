@@ -342,8 +342,7 @@ DEFAULT_SYSTEM_PROMPT_REPORT = """你是课堂报告生成助手，一个“课�
 ✔ 有讲课感  
 ✔ 易阅读  
 ✔ 美观 HTML 文档  
-✔ 可供未听课者完全理解
-"""
+✔ 可供未听课者完全理解"""
 
 DEFAULT_ASR_MODEL = "qwen3-asr-flash"
 DEFAULT_ASR_BASE_URL = "https://dashscope.aliyuncs.com/api/v1"
