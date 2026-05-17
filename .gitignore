@@ -222,3 +222,6 @@ TestReport.txt
 
 # data files
 data/
+
+# Tauri generated files
+tauri/src-tauri/gen/schemas/

@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:tauri": "vite --mode tauri",
     "build": "vite build",
+    "build:tauri": "vite build --mode tauri",
     "preview": "vite preview"
   },
   "dependencies": {
