@@ -24,6 +24,7 @@ class TestPackageExports(unittest.TestCase):
         self.assertTrue(hasattr(app.core, "QuizProcessor"))
         self.assertTrue(hasattr(app.core, "ReportProcessor"))
         self.assertTrue(hasattr(app.core, "SegmentSummaryProcessor"))
+        self.assertTrue(hasattr(app.core, "ask_question"))
         self.assertTrue(hasattr(app.core, "handle_audio"))
         self.assertTrue(hasattr(app.core, "start_background_tasks"))
 

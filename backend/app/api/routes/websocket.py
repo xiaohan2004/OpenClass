@@ -13,7 +13,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.db import get_engine
 from app.db.crud import get_session_by_id
 from app.core.classcontext import ClassContext
-from app.core.main_flow import handle_audio
+from app.core.main_flow import ask_question, handle_audio
 from app.utils.websocket_utils import SafeWebSocket
 from sqlmodel import Session
 
@@ -57,6 +57,8 @@ async def ws_session(websocket: WebSocket, session_id: int) -> None:
                         transcript_end_time=end_time,
                     )
                 )
+            elif msg.get("type") == "ask_question":
+                asyncio.create_task(ask_question(context, safe_ws))
 
     except WebSocketDisconnect as exc:
         logger.info("连接断开: %s", exc)

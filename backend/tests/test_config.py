@@ -59,9 +59,9 @@ class TestConfig(unittest.TestCase):
         settings = get_settings()
 
         self.assertEqual(settings.deepseek_base_url, "https://api.deepseek.com")
-        self.assertEqual(settings.model_name, "deepseek-chat")
-        self.assertEqual(settings.max_tokens, 1024)
-        self.assertEqual(settings.temperature, 1.7)
+        self.assertEqual(settings.model_name, "deepseek-v4-flash")
+        self.assertEqual(settings.max_tokens, 393216)
+        self.assertEqual(settings.temperature, 1.0)
         self.assertEqual(settings.max_questions, 10)
         self.assertEqual(settings.question_concurrent_workers, 1)
         self.assertEqual(settings.system_prompt_question, SYSTEM_PROMPT_QUESTION)
@@ -105,7 +105,7 @@ class TestConfig(unittest.TestCase):
 
         self.assertEqual(settings.deepseek_api_key, "test-key")
         self.assertEqual(settings.deepseek_base_url, "https://api.deepseek.com")
-        self.assertEqual(settings.model_name, "deepseek-chat")
+        self.assertEqual(settings.model_name, "deepseek-v4-flash")
 
     def test_settings_type_validation(self):
         with Session(get_engine()) as db:
@@ -114,7 +114,7 @@ class TestConfig(unittest.TestCase):
         refresh_settings_cache()
         settings = get_settings()
 
-        self.assertEqual(settings.max_tokens, 1024)
+        self.assertEqual(settings.max_tokens, 393216)
 
     def test_prompts_exist(self):
         self.assertIn("学生", SYSTEM_PROMPT_QUESTION)

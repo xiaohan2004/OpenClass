@@ -4,7 +4,7 @@ from .classcontext import ClassContext
 from .knowledge import KnowledgeProcessor
 from .keyword_extraction_algorithm import KeywordExtractor, KeywordScore
 from .keyword import KeywordProcessor
-from .main_flow import handle_audio, start_background_tasks
+from .main_flow import ask_question, handle_audio, start_background_tasks
 from .quiz import QuizProcessor
 from .question import QuestionProcessor
 from .report import (
@@ -26,6 +26,7 @@ __all__ = [
     "create_default_lecture_report_agent",
     "QuizProcessor",
     "SegmentSummaryProcessor",
+    "ask_question",
     "handle_audio",
     "start_background_tasks",
 ]

@@ -322,10 +322,28 @@
       <button v-if="showDebugToggle" class="ghost-button debug-toggle" type="button" @click="debugPanelOpen = !debugPanelOpen">
         {{ debugPanelOpen ? '收起' : '调试' }}
       </button>
+      <div
+        class="auto-question-pill"
+        :class="`is-${autoQuestionTriggerState}`"
+      >
+        <span class="auto-question-pill__dot"></span>
+        <span>自动提问：{{ autoQuestionTriggerLabel }}</span>
+      </div>
 
       <transition name="drawer">
         <div v-if="showDebugToggle && debugPanelOpen" class="debug-panel glass-panel">
           <p class="debug-title">调试工具</p>
+          <section class="debug-question-panel">
+            <p class="debug-meta">手动触发一次提问，不需要命中触发词或课堂停顿。</p>
+            <button
+              class="ghost-button debug-action-button"
+              type="button"
+              :disabled="!canManualAskQuestion"
+              @click="triggerManualQuestion"
+            >
+              手动提问
+            </button>
+          </section>
           <div class="debug-header-row">
             <p class="debug-meta">WS 收发记录（共 {{ wsTrafficLogs.length }} 条）</p>
             <div class="debug-actions">
@@ -470,6 +488,9 @@ const {
   isQuestionAsking,
   currentAskingQuestionText,
   currentAskingHistoryId,
+  autoQuestionTriggerLabel,
+  autoQuestionTriggerState,
+  canManualAskQuestion,
   wsTrafficLogs,
   reportToast,
   sessionStatusLabel,
@@ -505,6 +526,7 @@ const {
   handleMicrophoneChange,
   toggleStartPause,
   endCurrentSession,
+  triggerManualQuestion,
   clearWsTrafficLogs
 } = useClassroomPage()
 
@@ -627,3 +649,4 @@ onUnmounted(() => {
   window.removeEventListener('openclass:debug-toggle-updated', handleDebugToggleUpdated)
 })
 </script>
+

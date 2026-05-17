@@ -3,7 +3,6 @@
 import asyncio
 import json
 import logging
-import random
 import time
 
 from sqlmodel import Session
@@ -110,31 +109,38 @@ async def handle_audio(
     # 后台任务
     start_background_tasks(context, safe_ws)
 
-    # 决策
-    ask_question = random.random() < 0.2
 
-    if ask_question:
-        question_to_ask = question_processor.get_latest_question_random()
-        if question_to_ask:
-            logger.info("准备提问: %s", question_to_ask)
+async def ask_question(context: ClassContext, safe_ws: SafeWebSocket) -> None:
+    """由前端显式触发一次开口提问。"""
+    question_to_ask = question_processor.select_question_to_ask()
+    if not question_to_ask:
+        await safe_ws.send_json(
+            {
+                "type": "error",
+                "data": {
+                    "message": "当前没有可提问的问题",
+                },
+            }
+        )
+        return
 
-            question_id = context.consume_generated_question_id(question_to_ask)
-            if question_id is not None:
-                await asyncio.to_thread(_mark_question_asked, question_id)
+    logger.info("准备提问: %s", question_to_ask)
 
-            # TTS
-            audio_url = await asyncio.to_thread(tts.synthesize_to_url, question_to_ask)
+    question_id = context.consume_generated_question_id(question_to_ask)
+    if question_id is not None:
+        await asyncio.to_thread(_mark_question_asked, question_id)
 
-            # 通过 WS 发回前端
-            await safe_ws.send_json(
-                {
-                    "type": "tts_out",
-                    "data": {
-                        "audio_url": audio_url,
-                        "text": question_to_ask,
-                    },
-                }
-            )
+    audio_url = await asyncio.to_thread(tts.synthesize_to_url, question_to_ask)
+
+    await safe_ws.send_json(
+        {
+            "type": "tts_out",
+            "data": {
+                "audio_url": audio_url,
+                "text": question_to_ask,
+            },
+        }
+    )
 
 
 def start_background_tasks(context: ClassContext, safe_ws: SafeWebSocket) -> None:

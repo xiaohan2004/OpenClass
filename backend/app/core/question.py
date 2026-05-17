@@ -256,7 +256,7 @@ class QuestionProcessor:
         """获取当前问题队列中的所有问题（展开后的问题列表）"""
         return self._question_queue.get_all_data_flat()
 
-    def get_latest_question_random(self) -> str | None:
+    def select_question_to_ask(self) -> str | None:
         """从当前队列中按新鲜度和质量分综合选择一个问题。"""
         self._sync_config()
         batches = self._question_queue.get_batches()

@@ -23,6 +23,68 @@ const AUDIO_CHUNK_MS = 5000
 const RECEIVE_DRAIN_MS = 12000
 const KEYWORD_SOURCE_FILTER_STORAGE_KEY = 'openclass.keyword.sourceFilter'
 const KEYWORD_SOURCE_FILTER_VALUES = ['llm', 'algorithm', 'all']
+const QUESTION_TRIGGER_ENABLED_STORAGE_KEY = 'openclass.questionTrigger.enabled'
+const QUESTION_TRIGGER_PHRASES_STORAGE_KEY = 'openclass.questionTrigger.phrases'
+const QUESTION_TRIGGER_WINDOW_MS_STORAGE_KEY = 'openclass.questionTrigger.windowMs'
+const QUESTION_TRIGGER_SILENCE_DURATION_MS_STORAGE_KEY = 'openclass.questionTrigger.silenceDurationMs'
+const QUESTION_TRIGGER_SILENCE_LEVEL_STORAGE_KEY = 'openclass.questionTrigger.silenceLevel'
+const QUESTION_TRIGGER_COOLDOWN_MS_STORAGE_KEY = 'openclass.questionTrigger.cooldownMs'
+const DEFAULT_QUESTION_TRIGGER_PHRASES = [
+  '有问题',
+  '什么问题',
+  '有没有问题',
+  '有疑问',
+  '什么疑问',
+  '有没有疑问',
+  '没问题吧',
+  '没有问题吧',
+  '没有疑问吧',
+  '有不清楚',
+  '不清楚',
+  '不懂',
+  '哪里不懂',
+  '不明白',
+  '哪里不明白',
+  '听明白了吗',
+  '听懂了吗',
+  '都听懂了吗',
+  '明白了吗',
+  '都明白了吗',
+  '清楚了吗',
+  '都清楚了吗',
+  '理解了吗',
+  '都理解了吗',
+  '可以提问',
+  '请提问',
+  '请问',
+  '可以问',
+  '可以问问题',
+  '现在提问',
+  '现在可以问',
+  '大家可以问',
+  '同学可以问',
+  '想问',
+  '谁想问',
+  '谁要问',
+  '谁来问',
+  '谁有问题',
+  '谁有疑问',
+  '还有问题',
+  '还有疑问',
+  '还有不懂',
+  '还有哪里',
+  '举手提问',
+  '可以举手',
+  '有没有同学问'
+]
+const DEFAULT_QUESTION_TRIGGER_SETTINGS = {
+  enabled: true,
+  phrases: DEFAULT_QUESTION_TRIGGER_PHRASES,
+  windowMs: 20000,
+  silenceDurationMs: 3000,
+  silenceLevel: 0.1,
+  cooldownMs: 20000
+}
 
 export function useClassroomPage() {
   const sessionStatus = ref('idle')
@@ -88,6 +150,13 @@ export function useClassroomPage() {
   const activeTtsPlayCount = ref(0)
   const currentAskingQuestion = ref('')
   const currentAskingHistoryId = ref(null)
+  const questionTriggerPending = ref(false)
+  const questionTriggerSourceText = ref('')
+  const questionTriggerArmedAt = ref(0)
+  const questionSilenceStartedAt = ref(0)
+  const questionAskInFlight = ref(false)
+  const lastQuestionAskedAt = ref(0)
+  const questionTriggerSettings = ref({ ...DEFAULT_QUESTION_TRIGGER_SETTINGS })
   const keywordSnapshots = ref([])
   const keywordSourceFilter = ref('llm')
   const knowledgePoints = ref([])
@@ -240,6 +309,56 @@ export function useClassroomPage() {
     return text || '当前暂未提问'
   })
 
+  const isQuestionTriggerCoolingDown = computed(() => {
+    if (!lastQuestionAskedAt.value) {
+      return false
+    }
+    return nowTimestamp.value * 1000 - lastQuestionAskedAt.value < questionTriggerSettings.value.cooldownMs
+  })
+
+  const autoQuestionTriggerLabel = computed(() => {
+    if (!questionTriggerSettings.value.enabled) {
+      return '自动触发关闭'
+    }
+    if (questionAskInFlight.value) {
+      return '提问请求中'
+    }
+    if (isQuestionAsking.value) {
+      return '提问播放中'
+    }
+    if (questionTriggerPending.value) {
+      return '等待课堂停顿'
+    }
+    if (isQuestionTriggerCoolingDown.value) {
+      return '等待提问冷却'
+    }
+    return '等待触发词'
+  })
+
+  const autoQuestionTriggerState = computed(() => {
+    if (!questionTriggerSettings.value.enabled) {
+      return 'off'
+    }
+    if (questionAskInFlight.value) {
+      return 'requesting'
+    }
+    if (isQuestionAsking.value) {
+      return 'playing'
+    }
+    if (questionTriggerPending.value) {
+      return 'pending'
+    }
+    if (isQuestionTriggerCoolingDown.value) {
+      return 'cooldown'
+    }
+    return 'idle'
+  })
+
+  const canManualAskQuestion = computed(() => {
+    const ws = wsRef.value
+    return Boolean(ws && ws.readyState === WebSocket.OPEN && !questionAskInFlight.value && !isQuestionAsking.value)
+  })
+
   const latestKnowledgePoint = computed(
     () => knowledgePoints.value[knowledgePoints.value.length - 1] || null
   )
@@ -313,6 +432,34 @@ export function useClassroomPage() {
     return KEYWORD_SOURCE_FILTER_VALUES.includes(normalized) ? normalized : 'llm'
   }
 
+  function parseQuestionTriggerPhrases(value) {
+    const phrases = String(value || '')
+      .split(/[\n,，、;；]+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+    return phrases.length > 0 ? phrases : DEFAULT_QUESTION_TRIGGER_PHRASES
+  }
+
+  function normalizeLocalNumber(value, fallback, options = {}) {
+    if (value == null || value === '') {
+      return fallback
+    }
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) {
+      return fallback
+    }
+
+    const min = typeof options.min === 'number' ? options.min : null
+    const max = typeof options.max === 'number' ? options.max : null
+    if (min !== null && numeric < min) {
+      return min
+    }
+    if (max !== null && numeric > max) {
+      return max
+    }
+    return numeric
+  }
+
   function loadKeywordSourceFilter() {
     try {
       keywordSourceFilter.value = normalizeKeywordSourceFilter(
@@ -323,7 +470,48 @@ export function useClassroomPage() {
     }
   }
 
+  function loadQuestionTriggerSettings() {
+    try {
+      const enabledRaw = window.localStorage.getItem(QUESTION_TRIGGER_ENABLED_STORAGE_KEY)
+      const enabled = enabledRaw == null ? true : String(enabledRaw).toLowerCase() !== 'false'
+      const phrases = parseQuestionTriggerPhrases(
+        window.localStorage.getItem(QUESTION_TRIGGER_PHRASES_STORAGE_KEY) ||
+          DEFAULT_QUESTION_TRIGGER_PHRASES.join('\n')
+      )
+
+      questionTriggerSettings.value = {
+        enabled,
+        phrases,
+        windowMs: normalizeLocalNumber(
+          window.localStorage.getItem(QUESTION_TRIGGER_WINDOW_MS_STORAGE_KEY),
+          DEFAULT_QUESTION_TRIGGER_SETTINGS.windowMs,
+          { min: 1000 }
+        ),
+        silenceDurationMs: normalizeLocalNumber(
+          window.localStorage.getItem(QUESTION_TRIGGER_SILENCE_DURATION_MS_STORAGE_KEY),
+          DEFAULT_QUESTION_TRIGGER_SETTINGS.silenceDurationMs,
+          { min: 300 }
+        ),
+        silenceLevel: normalizeLocalNumber(
+          window.localStorage.getItem(QUESTION_TRIGGER_SILENCE_LEVEL_STORAGE_KEY),
+          DEFAULT_QUESTION_TRIGGER_SETTINGS.silenceLevel,
+          { min: 0, max: 1 }
+        ),
+        cooldownMs: normalizeLocalNumber(
+          window.localStorage.getItem(QUESTION_TRIGGER_COOLDOWN_MS_STORAGE_KEY),
+          DEFAULT_QUESTION_TRIGGER_SETTINGS.cooldownMs,
+          { min: 0 }
+        )
+      }
+    } catch {
+      questionTriggerSettings.value = { ...DEFAULT_QUESTION_TRIGGER_SETTINGS }
+    }
+  }
+
   function handleLocalSettingsUpdated(event) {
+    if (event?.detail?.questionTriggerSettings) {
+      loadQuestionTriggerSettings()
+    }
     if (event?.detail?.keywordSourceFilter) {
       keywordSourceFilter.value = normalizeKeywordSourceFilter(event.detail.keywordSourceFilter)
       return
@@ -334,6 +522,19 @@ export function useClassroomPage() {
   function handleLocalStorageUpdated(event) {
     if (event?.key === KEYWORD_SOURCE_FILTER_STORAGE_KEY) {
       keywordSourceFilter.value = normalizeKeywordSourceFilter(event.newValue)
+      return
+    }
+
+    const questionTriggerKeys = new Set([
+      QUESTION_TRIGGER_ENABLED_STORAGE_KEY,
+      QUESTION_TRIGGER_PHRASES_STORAGE_KEY,
+      QUESTION_TRIGGER_WINDOW_MS_STORAGE_KEY,
+      QUESTION_TRIGGER_SILENCE_DURATION_MS_STORAGE_KEY,
+      QUESTION_TRIGGER_SILENCE_LEVEL_STORAGE_KEY,
+      QUESTION_TRIGGER_COOLDOWN_MS_STORAGE_KEY
+    ])
+    if (questionTriggerKeys.has(event?.key)) {
+      loadQuestionTriggerSettings()
     }
   }
 
@@ -481,6 +682,137 @@ export function useClassroomPage() {
     logs.value = [message, ...logs.value].slice(0, 80)
   }
 
+  function resetQuestionTrigger() {
+    questionTriggerPending.value = false
+    questionTriggerSourceText.value = ''
+    questionTriggerArmedAt.value = 0
+    questionSilenceStartedAt.value = 0
+    questionAskInFlight.value = false
+  }
+
+  function textIncludesQuestionTrigger(text) {
+    const normalized = String(text || '').replace(/\s+/g, '')
+    if (!normalized) {
+      return false
+    }
+    return questionTriggerSettings.value.phrases.some((phrase) =>
+      normalized.includes(String(phrase || '').replace(/\s+/g, ''))
+    )
+  }
+
+  function armQuestionTrigger(transcriptText) {
+    if (
+      !questionTriggerSettings.value.enabled ||
+      !isRunning.value ||
+      isQuestionAsking.value ||
+      questionAskInFlight.value
+    ) {
+      return
+    }
+
+    const nowMs = Date.now()
+    if (nowMs - lastQuestionAskedAt.value < questionTriggerSettings.value.cooldownMs) {
+      return
+    }
+
+    questionTriggerPending.value = true
+    questionTriggerSourceText.value = String(transcriptText || '').trim()
+    questionTriggerArmedAt.value = nowMs
+    questionSilenceStartedAt.value = 0
+    appendLog(`${formatTime(Math.floor(nowMs / 1000))} 检测到提问触发词，等待课堂停顿`)
+  }
+
+  function handleTranscriptForQuestionTrigger(transcriptText) {
+    if (textIncludesQuestionTrigger(transcriptText)) {
+      armQuestionTrigger(transcriptText)
+    }
+  }
+
+  function sendAskQuestion(triggerReason = 'manual') {
+    const ws = wsRef.value
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      appendLog(`${formatTime(Math.floor(Date.now() / 1000))} WS未连接，无法触发提问`)
+      return false
+    }
+    if (questionAskInFlight.value || isQuestionAsking.value) {
+      return false
+    }
+
+    const payload = {
+      type: 'ask_question',
+      data: {
+        reason: triggerReason
+      }
+    }
+
+    ws.send(JSON.stringify(payload))
+    questionAskInFlight.value = true
+    questionTriggerPending.value = false
+    questionTriggerSourceText.value = ''
+    questionTriggerArmedAt.value = 0
+    questionSilenceStartedAt.value = 0
+    lastQuestionAskedAt.value = Date.now()
+    appendWsTrafficLog('send', JSON.stringify(payload))
+    appendLog(`${formatTime(Math.floor(Date.now() / 1000))} 已向后端触发提问`)
+    return true
+  }
+
+  function triggerManualQuestion() {
+    sendAskQuestion('manual_debug')
+  }
+
+  function updateSilenceQuestionTrigger(level) {
+    if (!questionTriggerPending.value) {
+      return
+    }
+
+    const nowMs = Date.now()
+    if (!questionTriggerSettings.value.enabled) {
+      resetQuestionTrigger()
+      return
+    }
+    if (nowMs - questionTriggerArmedAt.value > questionTriggerSettings.value.windowMs) {
+      resetQuestionTrigger()
+      return
+    }
+    if (!isRunning.value || isQuestionAsking.value || questionAskInFlight.value) {
+      questionSilenceStartedAt.value = 0
+      return
+    }
+
+    if (level <= questionTriggerSettings.value.silenceLevel) {
+      if (!questionSilenceStartedAt.value) {
+        questionSilenceStartedAt.value = nowMs
+        return
+      }
+      if (nowMs - questionSilenceStartedAt.value >= questionTriggerSettings.value.silenceDurationMs) {
+        sendAskQuestion('trigger_word_silence')
+      }
+      return
+    }
+
+    questionSilenceStartedAt.value = 0
+  }
+
+  function removeQueuedQuestionByText(questionText) {
+    const text = String(questionText || '').trim()
+    if (!text) {
+      return
+    }
+
+    const removeIndex = queuedQuestions.value.findIndex((item) => String(item.text || '').trim() === text)
+    if (removeIndex < 0) {
+      return
+    }
+
+    queuedQuestions.value = queuedQuestions.value
+      .filter((_, index) => index !== removeIndex)
+      .map((item, index) => ({
+        ...item,
+        order: `Q${index + 1}`
+      }))
+  }
+
   function appendAskedQuestionHistory(questionText, askedAtTs, questionId = null) {
     const text = String(questionText || '').trim()
     if (!text) {
@@ -623,7 +955,9 @@ export function useClassroomPage() {
         sumSquares += normalized * normalized
       }
       const rms = Math.sqrt(sumSquares / activeBuffer.length)
-      micLevel.value = Math.min(1, rms * 3.2)
+      const nextLevel = Math.min(1, rms * 3.2)
+      micLevel.value = nextLevel
+      updateSilenceQuestionTrigger(nextLevel)
 
       levelAnimationRef.value = window.requestAnimationFrame(loop)
     }
@@ -828,6 +1162,7 @@ export function useClassroomPage() {
             text: transcriptText
           }
         ]
+        handleTranscriptForQuestionTrigger(transcriptText)
       }
     }
 
@@ -909,6 +1244,8 @@ export function useClassroomPage() {
 
     if (type === 'tts_out') {
       const ttsText = String(data?.text || '').trim()
+      questionAskInFlight.value = false
+      removeQueuedQuestionByText(ttsText)
       if (data?.audio_url) {
         beginQuestionAsking(ttsText, now)
 
@@ -946,6 +1283,7 @@ export function useClassroomPage() {
     }
 
     if (type === 'error') {
+      questionAskInFlight.value = false
       appendLog(`${formatTime(now)} WS错误：${data?.message || '未知错误'}`)
     }
 
@@ -1016,6 +1354,7 @@ export function useClassroomPage() {
 
   async function closeSessionWebSocket() {
     clearWsCloseTimer()
+    resetQuestionTrigger()
     await stopRecordingLoop()
 
     const ws = wsRef.value
@@ -1261,6 +1600,7 @@ export function useClassroomPage() {
       activeTtsPlayCount.value = 0
       currentAskingQuestion.value = ''
       currentAskingHistoryId.value = null
+      resetQuestionTrigger()
       keywordSnapshots.value = []
       knowledgePoints.value = []
       quizItems.value = []
@@ -1348,6 +1688,7 @@ export function useClassroomPage() {
     activeTtsPlayCount.value = 0
     currentAskingQuestion.value = ''
     currentAskingHistoryId.value = null
+    resetQuestionTrigger()
 
     const keywordList = Array.isArray(keywordsData) ? keywordsData : []
     const sortedKeywordList = [...keywordList].sort((a, b) => {
@@ -1678,6 +2019,7 @@ export function useClassroomPage() {
 
   onMounted(async () => {
     loadKeywordSourceFilter()
+    loadQuestionTriggerSettings()
     window.addEventListener('openclass:local-settings-updated', handleLocalSettingsUpdated)
     window.addEventListener('storage', handleLocalStorageUpdated)
 
@@ -1735,6 +2077,9 @@ export function useClassroomPage() {
     isQuestionAsking,
     currentAskingQuestionText,
     currentAskingHistoryId,
+    autoQuestionTriggerLabel,
+    autoQuestionTriggerState,
+    canManualAskQuestion,
     stats,
     logs,
     wsTrafficLogs,
@@ -1773,6 +2118,7 @@ export function useClassroomPage() {
     toggleStartPause,
     endCurrentSession,
     refreshMicrophones,
+    triggerManualQuestion,
     clearWsTrafficLogs
   }
 }

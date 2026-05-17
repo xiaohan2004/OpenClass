@@ -5,6 +5,84 @@ const SUCCESS_TOAST_DURATION = 2200
 const DEBUG_TOGGLE_STORAGE_KEY = 'openclass.ui.showDebugToggle'
 const KEYWORD_SOURCE_FILTER_STORAGE_KEY = 'openclass.keyword.sourceFilter'
 const KEYWORD_SOURCE_FILTER_VALUES = ['llm', 'algorithm', 'all']
+const QUESTION_TRIGGER_ENABLED_STORAGE_KEY = 'openclass.questionTrigger.enabled'
+const QUESTION_TRIGGER_PHRASES_STORAGE_KEY = 'openclass.questionTrigger.phrases'
+const QUESTION_TRIGGER_WINDOW_MS_STORAGE_KEY = 'openclass.questionTrigger.windowMs'
+const QUESTION_TRIGGER_SILENCE_DURATION_MS_STORAGE_KEY = 'openclass.questionTrigger.silenceDurationMs'
+const QUESTION_TRIGGER_SILENCE_LEVEL_STORAGE_KEY = 'openclass.questionTrigger.silenceLevel'
+const QUESTION_TRIGGER_COOLDOWN_MS_STORAGE_KEY = 'openclass.questionTrigger.cooldownMs'
+const DEFAULT_QUESTION_TRIGGER_PHRASES = [
+    '有问题',
+    '什么问题',
+    '有没有问题',
+    '有疑问',
+    '什么疑问',
+    '有没有疑问',
+    '没问题吧',
+    '没有问题吧',
+    '没有疑问吧',
+    '有不清楚',
+    '不清楚',
+    '不懂',
+    '哪里不懂',
+    '不明白',
+    '哪里不明白',
+    '听明白了吗',
+    '听懂了吗',
+    '都听懂了吗',
+    '明白了吗',
+    '都明白了吗',
+    '清楚了吗',
+    '都清楚了吗',
+    '理解了吗',
+    '都理解了吗',
+    '可以提问',
+    '请提问',
+    '请问',
+    '可以问',
+    '可以问问题',
+    '现在提问',
+    '现在可以问',
+    '大家可以问',
+    '同学可以问',
+    '想问',
+    '谁想问',
+    '谁要问',
+    '谁来问',
+    '谁有问题',
+    '谁有疑问',
+    '还有问题',
+    '还有疑问',
+    '还有不懂',
+    '还有哪里',
+    '举手提问',
+    '可以举手',
+    '有没有同学问'
+].join('\n')
+const DEFAULT_QUESTION_TRIGGER_SETTINGS = {
+    enabled: true,
+    phrases: DEFAULT_QUESTION_TRIGGER_PHRASES,
+    windowMs: 20000,
+    silenceDurationMs: 3000,
+    silenceLevel: 0.1,
+    cooldownMs: 20000
+}
+const QUESTION_TRIGGER_HELP_TEXT = `自动提问触发逻辑：
+
+1. 前端收到课堂转写后，检查转写文本是否包含“提问触发词”；每一行是一个短触发短语，匹配时会去掉空白，不要求整句完全一致。
+2. 命中触发词后进入等待窗口。
+3. 在等待窗口内，麦克风音量连续低于“沉默音量阈值”，并持续达到“沉默持续时间”后，前端通过 WebSocket 发送 ask_question。
+4. 后端收到 ask_question 后，从候选问题队列中选择一个问题并返回语音播放。
+5. “提问冷却时间”从前端成功发送 ask_question 的那一刻开始计时；冷却时间内，即使命中新的触发词并检测到沉默，也不会再次发送 ask_question。
+6. 如果 ask_question 已发送但后端还没有返回结果，或当前正在播放提问语音，前端也不会再次触发。`
+const QUESTION_TRIGGER_HELP_STEPS = [
+    '前端收到课堂转写后，检查转写文本是否包含“提问触发词”；每一行是一个短触发短语，匹配时会去掉空白，不要求整句完全一致。',
+    '命中触发词后进入等待窗口。',
+    '在等待窗口内，麦克风音量连续低于“沉默音量阈值”，并持续达到“沉默持续时间”后，前端通过 WebSocket 发送 ask_question。',
+    '后端收到 ask_question 后，从候选问题队列中选择一个问题并返回语音播放。',
+    '“提问冷却时间”从前端成功发送 ask_question 的那一刻开始计时；冷却时间内，即使命中新的触发词并检测到沉默，也不会再次发送 ask_question。',
+    '如果 ask_question 已发送但后端还没有返回结果，或当前正在播放提问语音，前端也不会再次触发。'
+]
 
 const cardDefs = [
     {
@@ -24,7 +102,19 @@ const cardDefs = [
                     { value: 'algorithm', label: 'algorithm' },
                     { value: 'all', label: 'all' }
                 ]
-            }
+            },
+            {
+                key: 'question_trigger_enabled',
+                label: '自动提问触发',
+                kind: 'boolean',
+                infoText: QUESTION_TRIGGER_HELP_TEXT,
+                infoSteps: QUESTION_TRIGGER_HELP_STEPS
+            },
+            { key: 'question_trigger_phrases', label: '提问触发词', kind: 'longtext-modal' },
+            { key: 'question_trigger_window_ms', label: '触发词等待窗口(ms)', kind: 'number', min: 1000, step: 500 },
+            { key: 'question_trigger_silence_duration_ms', label: '沉默持续时间(ms)', kind: 'number', min: 300, step: 100 },
+            { key: 'question_trigger_silence_level', label: '沉默音量阈值(0-1)', kind: 'number', min: 0, step: 0.01 },
+            { key: 'question_trigger_cooldown_ms', label: '提问冷却时间(ms)', kind: 'number', min: 0, step: 500 }
         ]
     },
     {
@@ -124,6 +214,8 @@ const promptDialogVisible = ref(false)
 const promptDialogKey = ref('')
 const promptDialogTitle = ref('')
 const promptDialogDraft = ref('')
+const promptDialogReadOnly = ref(false)
+const promptDialogInfoSteps = ref([])
 
 let successTipTimer = null
 
@@ -170,9 +262,29 @@ const normalizeValue = (key, value) => {
     return String(value)
 }
 
+const readLocalBoolean = (key, fallback) => {
+    const raw = window.localStorage.getItem(key)
+    return raw == null ? fallback : String(raw).toLowerCase() !== 'false'
+}
+
+const readLocalNumber = (key, fallback) => {
+    const raw = window.localStorage.getItem(key)
+    if (raw == null || raw === '') {
+        return fallback
+    }
+    const numeric = Number(raw)
+    return Number.isFinite(numeric) ? numeric : fallback
+}
+
+const toLocalNumber = (value, fallback) => {
+    const numeric = Number(value)
+    return Number.isFinite(numeric) ? numeric : fallback
+}
+
 const loadLocalSettings = () => {
     let showDebugToggle = true
     let keywordSourceFilter = 'llm'
+    let questionTriggerSettings = { ...DEFAULT_QUESTION_TRIGGER_SETTINGS }
     try {
         const raw = window.localStorage.getItem(DEBUG_TOGGLE_STORAGE_KEY)
         if (raw != null) {
@@ -182,19 +294,54 @@ const loadLocalSettings = () => {
         if (KEYWORD_SOURCE_FILTER_VALUES.includes(rawKeywordSourceFilter)) {
             keywordSourceFilter = rawKeywordSourceFilter
         }
+        questionTriggerSettings = {
+            enabled: readLocalBoolean(
+                QUESTION_TRIGGER_ENABLED_STORAGE_KEY,
+                DEFAULT_QUESTION_TRIGGER_SETTINGS.enabled
+            ),
+            phrases:
+                window.localStorage.getItem(QUESTION_TRIGGER_PHRASES_STORAGE_KEY) ||
+                DEFAULT_QUESTION_TRIGGER_SETTINGS.phrases,
+            windowMs: readLocalNumber(
+                QUESTION_TRIGGER_WINDOW_MS_STORAGE_KEY,
+                DEFAULT_QUESTION_TRIGGER_SETTINGS.windowMs
+            ),
+            silenceDurationMs: readLocalNumber(
+                QUESTION_TRIGGER_SILENCE_DURATION_MS_STORAGE_KEY,
+                DEFAULT_QUESTION_TRIGGER_SETTINGS.silenceDurationMs
+            ),
+            silenceLevel: readLocalNumber(
+                QUESTION_TRIGGER_SILENCE_LEVEL_STORAGE_KEY,
+                DEFAULT_QUESTION_TRIGGER_SETTINGS.silenceLevel
+            ),
+            cooldownMs: readLocalNumber(
+                QUESTION_TRIGGER_COOLDOWN_MS_STORAGE_KEY,
+                DEFAULT_QUESTION_TRIGGER_SETTINGS.cooldownMs
+            )
+        }
     } catch {
         showDebugToggle = true
         keywordSourceFilter = 'llm'
+        questionTriggerSettings = { ...DEFAULT_QUESTION_TRIGGER_SETTINGS }
     }
 
     formValues.ui_show_debug_toggle = showDebugToggle
     formValues.keyword_source_filter = keywordSourceFilter
+    formValues.question_trigger_enabled = questionTriggerSettings.enabled
+    formValues.question_trigger_phrases = questionTriggerSettings.phrases
+    formValues.question_trigger_window_ms = questionTriggerSettings.windowMs
+    formValues.question_trigger_silence_duration_ms = questionTriggerSettings.silenceDurationMs
+    formValues.question_trigger_silence_level = questionTriggerSettings.silenceLevel
+    formValues.question_trigger_cooldown_ms = questionTriggerSettings.cooldownMs
 }
 
 const persistLocalSettings = (card) => {
     const containsDebugToggle = card.fields.some((field) => field.key === 'ui_show_debug_toggle')
     const containsKeywordSourceFilter = card.fields.some((field) => field.key === 'keyword_source_filter')
-    if (!containsDebugToggle && !containsKeywordSourceFilter) {
+    const containsQuestionTriggerSettings = card.fields.some((field) =>
+        String(field.key).startsWith('question_trigger_')
+    )
+    if (!containsDebugToggle && !containsKeywordSourceFilter && !containsQuestionTriggerSettings) {
         return
     }
 
@@ -202,9 +349,35 @@ const persistLocalSettings = (card) => {
     const keywordSourceFilter = KEYWORD_SOURCE_FILTER_VALUES.includes(formValues.keyword_source_filter)
         ? formValues.keyword_source_filter
         : 'llm'
+    const questionTriggerSettings = {
+        enabled: Boolean(formValues.question_trigger_enabled),
+        phrases: String(formValues.question_trigger_phrases || DEFAULT_QUESTION_TRIGGER_SETTINGS.phrases),
+        windowMs: toLocalNumber(formValues.question_trigger_window_ms, DEFAULT_QUESTION_TRIGGER_SETTINGS.windowMs),
+        silenceDurationMs: toLocalNumber(
+            formValues.question_trigger_silence_duration_ms,
+            DEFAULT_QUESTION_TRIGGER_SETTINGS.silenceDurationMs
+        ),
+        silenceLevel: toLocalNumber(
+            formValues.question_trigger_silence_level,
+            DEFAULT_QUESTION_TRIGGER_SETTINGS.silenceLevel
+        ),
+        cooldownMs: toLocalNumber(formValues.question_trigger_cooldown_ms, DEFAULT_QUESTION_TRIGGER_SETTINGS.cooldownMs)
+    }
     try {
         window.localStorage.setItem(DEBUG_TOGGLE_STORAGE_KEY, String(visible))
         window.localStorage.setItem(KEYWORD_SOURCE_FILTER_STORAGE_KEY, keywordSourceFilter)
+        window.localStorage.setItem(QUESTION_TRIGGER_ENABLED_STORAGE_KEY, String(questionTriggerSettings.enabled))
+        window.localStorage.setItem(QUESTION_TRIGGER_PHRASES_STORAGE_KEY, questionTriggerSettings.phrases)
+        window.localStorage.setItem(QUESTION_TRIGGER_WINDOW_MS_STORAGE_KEY, String(questionTriggerSettings.windowMs))
+        window.localStorage.setItem(
+            QUESTION_TRIGGER_SILENCE_DURATION_MS_STORAGE_KEY,
+            String(questionTriggerSettings.silenceDurationMs)
+        )
+        window.localStorage.setItem(
+            QUESTION_TRIGGER_SILENCE_LEVEL_STORAGE_KEY,
+            String(questionTriggerSettings.silenceLevel)
+        )
+        window.localStorage.setItem(QUESTION_TRIGGER_COOLDOWN_MS_STORAGE_KEY, String(questionTriggerSettings.cooldownMs))
     } catch {
         // ignore write failure and keep in-memory value
     }
@@ -216,7 +389,7 @@ const persistLocalSettings = (card) => {
     )
     window.dispatchEvent(
         new CustomEvent('openclass:local-settings-updated', {
-            detail: { visible, keywordSourceFilter }
+            detail: { visible, keywordSourceFilter, questionTriggerSettings }
         })
     )
 }
@@ -231,9 +404,19 @@ const getFieldLabel = (key) => {
     return key
 }
 
+const getLongTextEditLabel = (key) => {
+    if (key === 'question_trigger_phrases') {
+        return '编辑触发词'
+    }
+    return '编辑提示词'
+}
+
 const getPromptPreview = (key) => {
     const text = String(formValues[key] ?? '').trim()
     if (!text) {
+        if (key === 'question_trigger_phrases') {
+            return '未设置触发词'
+        }
         return '未设置提示词'
     }
 
@@ -328,14 +511,31 @@ const openPromptEditor = (field) => {
     promptDialogKey.value = fieldKey
     promptDialogTitle.value = field?.displayLabel || field?.label || fieldKey
     promptDialogDraft.value = String(formValues[fieldKey] ?? '')
+    promptDialogReadOnly.value = false
+    promptDialogInfoSteps.value = []
+    promptDialogVisible.value = true
+}
+
+const openInfoDialog = (field) => {
+    promptDialogKey.value = ''
+    promptDialogTitle.value = field?.displayLabel || field?.label || '说明'
+    promptDialogDraft.value = String(field?.infoText || '')
+    promptDialogInfoSteps.value = Array.isArray(field?.infoSteps) ? field.infoSteps : []
+    promptDialogReadOnly.value = true
     promptDialogVisible.value = true
 }
 
 const closePromptEditor = () => {
     promptDialogVisible.value = false
+    promptDialogReadOnly.value = false
+    promptDialogInfoSteps.value = []
 }
 
 const applyPromptEditor = () => {
+    if (promptDialogReadOnly.value) {
+        closePromptEditor()
+        return
+    }
     if (!promptDialogKey.value) {
         closePromptEditor()
         return
@@ -352,7 +552,10 @@ const sectionCards = computed(() =>
             ...field,
             value: formValues[field.key],
             hasValue: Boolean(sensitiveStatus[field.key]),
-            displayLabel: getFieldLabel(field.key)
+            displayLabel: getFieldLabel(field.key),
+            editLabel: getLongTextEditLabel(field.key),
+            infoText: field.infoText || '',
+            infoSteps: field.infoSteps || []
         }))
     }))
 )
@@ -374,8 +577,12 @@ export function useSettingsPage() {
         promptDialogVisible,
         promptDialogTitle,
         promptDialogDraft,
+        promptDialogReadOnly,
+        promptDialogInfoSteps,
         getPromptPreview,
+        getLongTextEditLabel,
         openPromptEditor,
+        openInfoDialog,
         closePromptEditor,
         applyPromptEditor,
         loadSettings,

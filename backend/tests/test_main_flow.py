@@ -23,6 +23,7 @@ from app.core.main_flow import (
     _background_tasks_processing,
     _background_keyword_extraction,
     _handle_task_result,
+    ask_question,
     handle_audio,
     start_background_tasks,
 )
@@ -40,14 +41,10 @@ from app.utils.websocket_utils import SafeWebSocket
 
 
 class TestHandleAudio(unittest.IsolatedAsyncioTestCase):
-    @patch("app.core.main_flow.random.random")
     async def test_handle_audio_updates_context_and_dispatches_background_tasks(
         self,
-        mock_random,
     ):
         """测试 handle_audio 处理音频输入的完整流程。"""
-        mock_random.return_value = 0.9
-
         context = ClassContext()
         safe_ws = MagicMock(spec=SafeWebSocket)
         safe_ws.send_json = AsyncMock()
@@ -93,14 +90,10 @@ class TestHandleAudio(unittest.IsolatedAsyncioTestCase):
         mock_extract.assert_called_once_with("课堂文本")
         mock_persist.assert_not_called()
 
-    @patch("app.core.main_flow.random.random")
-    async def test_handle_audio_sends_tts_out_when_asking(
+    async def test_handle_audio_does_not_send_tts_out(
         self,
-        mock_random,
     ):
-        """测试当决策为提问时，handle_audio 发送音频输出。"""
-        mock_random.return_value = 0.1
-
+        """handle_audio 不再自动触发开口提问。"""
         context = ClassContext()
         safe_ws = MagicMock(spec=SafeWebSocket)
         safe_ws.send_json = AsyncMock()
@@ -108,7 +101,7 @@ class TestHandleAudio(unittest.IsolatedAsyncioTestCase):
         with patch("app.core.main_flow.asr.transcribe", return_value="讲课文本"):
             with patch("app.core.main_flow.start_background_tasks"):
                 with patch(
-                    "app.core.main_flow.question_processor.get_latest_question_random",
+                    "app.core.main_flow.question_processor.select_question_to_ask",
                     return_value="提问内容",
                 ):
                     with patch(
@@ -122,7 +115,54 @@ class TestHandleAudio(unittest.IsolatedAsyncioTestCase):
                             for call in safe_ws.send_json.await_args_list
                         ]
                         self.assertIn("transcript", sent_types)
-                        self.assertIn("tts_out", sent_types)
+                        self.assertNotIn("tts_out", sent_types)
+
+    async def test_ask_question_sends_tts_out(self):
+        """前端触发 ask_question 时发送音频输出。"""
+        context = ClassContext()
+        safe_ws = MagicMock(spec=SafeWebSocket)
+        safe_ws.send_json = AsyncMock()
+
+        with patch(
+            "app.core.main_flow.question_processor.select_question_to_ask",
+            return_value="提问内容",
+        ):
+            with patch(
+                "app.core.main_flow.tts.synthesize_to_url",
+                return_value="http://audio.url",
+            ):
+                await ask_question(context, safe_ws)
+
+        safe_ws.send_json.assert_awaited_once_with(
+            {
+                "type": "tts_out",
+                "data": {
+                    "audio_url": "http://audio.url",
+                    "text": "提问内容",
+                },
+            }
+        )
+
+    async def test_ask_question_sends_error_when_empty(self):
+        """没有候选问题时返回业务错误消息。"""
+        context = ClassContext()
+        safe_ws = MagicMock(spec=SafeWebSocket)
+        safe_ws.send_json = AsyncMock()
+
+        with patch(
+            "app.core.main_flow.question_processor.select_question_to_ask",
+            return_value=None,
+        ):
+            await ask_question(context, safe_ws)
+
+        safe_ws.send_json.assert_awaited_once_with(
+            {
+                "type": "error",
+                "data": {
+                    "message": "当前没有可提问的问题",
+                },
+            }
+        )
 
 
 class TestBackgroundTasks(unittest.IsolatedAsyncioTestCase):
@@ -250,10 +290,7 @@ class TestMainFlowDatabaseIntegration(unittest.IsolatedAsyncioTestCase):
         db_session_module.get_engine.cache_clear()
         self.temp_dir.cleanup()
 
-    @patch("app.core.main_flow.random.random")
-    async def test_handle_audio_persists_transcript(self, mock_random):
-        mock_random.return_value = 0.9
-
+    async def test_handle_audio_persists_transcript(self):
         context = ClassContext(session_id=self.session_id)
         safe_ws = MagicMock(spec=SafeWebSocket)
         safe_ws.send_json = AsyncMock()

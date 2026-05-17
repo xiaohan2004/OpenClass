@@ -65,7 +65,7 @@ class TestQuestionProcessor(unittest.TestCase):
         self.assertEqual(result, ["默认问题", "默认问题"])
         self.assertEqual(mock_generate_question.call_count, 2)
 
-    def test_get_latest_question_random_uses_recency_and_score(self):
+    def test_select_question_to_ask_uses_recency_and_score(self):
         self.processor._question_queue.add(
             1.0, [ScoredQuestion(text="旧高分问题", score=1.0)]
         )
@@ -76,14 +76,14 @@ class TestQuestionProcessor(unittest.TestCase):
             3.0, [ScoredQuestion(text="新低分问题", score=0.0)]
         )
 
-        result = self.processor.get_latest_question_random()
+        result = self.processor.select_question_to_ask()
 
         self.assertEqual(result, "中间高分问题")
         self.assertEqual(
             self.processor.get_questions_flat(), ["旧高分问题", "新低分问题"]
         )
 
-    def test_get_latest_question_random_skips_negative_scores(self):
+    def test_select_question_to_ask_skips_negative_scores(self):
         self.processor._question_queue.add(
             1.0, [ScoredQuestion(text="旧可问问题", score=0.8)]
         )
@@ -91,11 +91,11 @@ class TestQuestionProcessor(unittest.TestCase):
             2.0, [ScoredQuestion(text="新致命问题", score=-0.1)]
         )
 
-        result = self.processor.get_latest_question_random()
+        result = self.processor.select_question_to_ask()
 
         self.assertEqual(result, "旧可问问题")
 
-    def test_get_latest_question_random_returns_none_when_all_scores_negative(self):
+    def test_select_question_to_ask_returns_none_when_all_scores_negative(self):
         self.processor._question_queue.add(
             1.0, [ScoredQuestion(text="致命问题一", score=-0.8)]
         )
@@ -103,7 +103,7 @@ class TestQuestionProcessor(unittest.TestCase):
             2.0, [ScoredQuestion(text="致命问题二", score=-0.1)]
         )
 
-        result = self.processor.get_latest_question_random()
+        result = self.processor.select_question_to_ask()
 
         self.assertIsNone(result)
 

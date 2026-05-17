@@ -33,7 +33,18 @@
 
           <div class="settings-fields">
             <label v-for="field in card.fields" :key="field.key" class="settings-field">
-              <span v-if="field.kind !== 'longtext-modal'">{{ field.displayLabel }}</span>
+              <div v-if="field.kind !== 'longtext-modal'" class="settings-field__label-row">
+                <span>{{ field.displayLabel }}</span>
+                <button
+                  v-if="field.infoText"
+                  type="button"
+                  class="settings-info-btn"
+                  :aria-label="`${field.displayLabel}说明`"
+                  @click.prevent="openInfoDialog(field)"
+                >
+                  i
+                </button>
+              </div>
 
               <template v-if="field.kind === 'boolean'">
                 <select v-model="formValues[field.key]" class="settings-input">
@@ -54,7 +65,7 @@
                 <div class="settings-prompt-editor">
                   <div class="settings-prompt-editor__head">
                     <span>{{ field.displayLabel }}</span>
-                    <button type="button" class="settings-btn settings-btn--mini" @click="openPromptEditor(field)">编辑提示词</button>
+                    <button type="button" class="settings-btn settings-btn--mini" @click="openPromptEditor(field)">{{ field.editLabel || '编辑' }}</button>
                   </div>
                   <p class="settings-prompt-preview">{{ getPromptPreview(field.key) }}</p>
                 </div>
@@ -96,6 +107,15 @@
             <label v-for="field in card.fields" :key="field.key" class="settings-field">
               <div v-if="field.kind !== 'longtext-modal'" class="settings-field__label-row">
                 <span>{{ field.displayLabel }}</span>
+                <button
+                  v-if="field.infoText"
+                  type="button"
+                  class="settings-info-btn"
+                  :aria-label="`${field.displayLabel}说明`"
+                  @click.prevent="openInfoDialog(field)"
+                >
+                  i
+                </button>
                 <small v-if="field.sensitive && field.hasValue" class="settings-sensitive">已配置</small>
               </div>
 
@@ -110,7 +130,7 @@
                 <div class="settings-prompt-editor">
                   <div class="settings-prompt-editor__head">
                     <span>{{ field.displayLabel }}</span>
-                    <button type="button" class="settings-btn settings-btn--mini" @click="openPromptEditor(field)">编辑提示词</button>
+                    <button type="button" class="settings-btn settings-btn--mini" @click="openPromptEditor(field)">{{ field.editLabel || '编辑' }}</button>
                   </div>
                   <p class="settings-prompt-preview">{{ getPromptPreview(field.key) }}</p>
                 </div>
@@ -140,15 +160,28 @@
             <button type="button" class="settings-prompt-modal__close" @click="closePromptEditor">×</button>
           </header>
 
+          <div
+            v-if="promptDialogReadOnly"
+            class="settings-info-content"
+          >
+            <p class="settings-info-lead">自动提问会同时参考老师转写内容和课堂停顿。</p>
+            <ol v-if="promptDialogInfoSteps.length" class="settings-info-steps">
+              <li v-for="step in promptDialogInfoSteps" :key="step">{{ step }}</li>
+            </ol>
+            <p v-else>{{ promptDialogDraft }}</p>
+          </div>
           <textarea
+            v-else
             v-model="promptDialogDraft"
             class="settings-prompt-modal__textarea"
-            placeholder="请输入提示词内容"
+            placeholder="请输入内容"
           />
 
           <footer class="settings-prompt-modal__footer">
             <button type="button" class="settings-btn settings-btn--subtle" @click="closePromptEditor">取消</button>
-            <button type="button" class="settings-btn" @click="applyPromptEditor">应用</button>
+            <button type="button" class="settings-btn" @click="applyPromptEditor">
+              {{ promptDialogReadOnly ? '知道了' : '应用' }}
+            </button>
           </footer>
         </div>
       </div>
@@ -173,8 +206,11 @@ const {
   promptDialogVisible,
   promptDialogTitle,
   promptDialogDraft,
+  promptDialogReadOnly,
+  promptDialogInfoSteps,
   getPromptPreview,
   openPromptEditor,
+  openInfoDialog,
   closePromptEditor,
   applyPromptEditor,
   loadSettings,
@@ -324,8 +360,24 @@ onActivated(() => {
 .settings-field__label-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
+}
+
+.settings-info-btn {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(137, 224, 169, 0.38);
+  color: rgba(214, 245, 225, 0.92);
+  background: rgba(108, 159, 130, 0.22);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.settings-info-btn:hover {
+  background: rgba(108, 159, 130, 0.36);
 }
 
 .settings-sensitive {
@@ -463,6 +515,36 @@ onActivated(() => {
   line-height: 1.5;
 }
 
+.settings-info-content {
+  width: 100%;
+  padding: 4px 2px 2px;
+  color: #e9f5ee;
+  line-height: 1.65;
+}
+
+.settings-info-lead {
+  margin: 0 0 12px;
+  color: rgba(214, 241, 224, 0.92);
+  font-size: 0.92rem;
+}
+
+.settings-info-steps {
+  margin: 0;
+  padding-left: 22px;
+  display: grid;
+  gap: 10px;
+}
+
+.settings-info-steps li {
+  padding-left: 4px;
+  color: rgba(232, 248, 238, 0.94);
+}
+
+.settings-info-steps li::marker {
+  color: rgba(134, 223, 163, 0.95);
+  font-weight: 800;
+}
+
 .settings-prompt-modal__textarea:focus {
   border-color: rgba(137, 224, 169, 0.56);
   box-shadow: 0 0 0 2px rgba(123, 212, 153, 0.22);
@@ -487,3 +569,4 @@ onActivated(() => {
   }
 }
 </style>
+
