@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.openclass.desktop",
   "build": {
-    "beforeDevCommand": "powershell -ExecutionPolicy Bypass -Command \"& ../scripts/frontend-check.ps1; Set-Location ../frontend; npm run dev:tauri\"",
-    "beforeBuildCommand": "powershell -ExecutionPolicy Bypass -Command \"& ../scripts/frontend-check.ps1; Set-Location ../frontend; npm run build:tauri\"",
+    "beforeDevCommand": "powershell -ExecutionPolicy Bypass -Command \"& ../scripts/desktop/frontend-check.ps1; Set-Location ../frontend; npm run dev:tauri\"",
+    "beforeBuildCommand": "powershell -ExecutionPolicy Bypass -Command \"& ../scripts/desktop/frontend-check.ps1; Set-Location ../frontend; npm run build:tauri\"",
     "devUrl": "http://127.0.0.1:5173",
     "frontendDist": "../../frontend/dist"
   },
