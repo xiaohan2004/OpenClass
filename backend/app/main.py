@@ -5,6 +5,7 @@ FastAPI 应用入口
 from contextlib import asynccontextmanager
 import logging
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.routes.rest import router as rest_router
@@ -28,6 +29,12 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="OpenClass - 课堂模拟学生提问助手", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(rest_router)
 app.include_router(websocket_router)
 
