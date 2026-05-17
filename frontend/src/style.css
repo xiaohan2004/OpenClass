@@ -1297,13 +1297,6 @@ button {
   border: 1px solid rgba(131, 141, 124, 0.18);
 }
 
-.debug-question-panel strong {
-  display: block;
-  margin-top: 2px;
-  color: var(--text-main);
-  font-size: 0.95rem;
-}
-
 .debug-ws-list {
   max-height: 220px;
   overflow: auto;

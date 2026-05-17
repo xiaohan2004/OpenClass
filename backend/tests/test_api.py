@@ -610,6 +610,38 @@ class TestAPI(unittest.TestCase):
 
     def test_generate_report_endpoint_starts_background_work_only(self):
         """触发报告生成接口应立即返回，不在请求内执行耗时生成。"""
+        with Session(db_session_module.get_engine()) as db:
+            create_keyword(
+                db,
+                self.seed_data["session_id"],
+                '["重复词", "重复词", "新增词"]',
+                source="llm",
+            )
+            create_keyword(
+                db,
+                self.seed_data["session_id"],
+                '["算法词"]',
+                source="algorithm",
+            )
+            create_question(
+                db,
+                self.seed_data["session_id"],
+                "极限为什么要看左右两侧？",
+                score=0.99,
+            )
+            create_question(
+                db,
+                self.seed_data["session_id"],
+                "极限为什么需要观察左右两侧？",
+                score=0.98,
+            )
+            create_question(
+                db,
+                self.seed_data["session_id"],
+                "函数连续和极限有什么关系？",
+                score=0.6,
+            )
+
         with mock.patch.object(rest_routes, "_start_report_generation") as mock_start:
             response = self.request(
                 "POST", f"/api/sessions/{self.seed_data['session_id']}/reports"
@@ -621,7 +653,21 @@ class TestAPI(unittest.TestCase):
         self.assertIsNone(report_data["content"])
         mock_start.assert_called_once()
         self.assertEqual(mock_start.call_args.args[1], self.seed_data["session_id"])
-        self.assertIn("老师讲课原文", mock_start.call_args.args[2])
+        material = mock_start.call_args.args[2]
+        self.assertIn("老师讲课原文", material)
+        self.assertIn("分段小结", material)
+        self.assertIn("高分模拟学生提问", material)
+        self.assertIn("极限为什么要看左右两侧？", material)
+        self.assertNotIn("极限为什么需要观察左右两侧？", material)
+        self.assertIn("函数连续和极限有什么关系？", material)
+        self.assertIn("LLM关键词", material)
+        self.assertEqual(material.count("重复词"), 1)
+        self.assertIn("新增词", material)
+        self.assertNotIn("算法词", material)
+        self.assertIn("知识点", material)
+        self.assertIn("函数连续", material)
+        self.assertIn("小测题目", material)
+        self.assertIn("函数连续的判定条件是什么？", material)
 
     def test_report_generation_saves_html_and_pdf_path(self):
         """课后报告生成成功时应保存 HTML 内容与 PDF 路径。"""

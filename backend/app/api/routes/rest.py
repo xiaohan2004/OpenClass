@@ -75,6 +75,60 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["rest"])
 
+_QUESTION_SIMILARITY_THRESHOLD = 0.55
+
+
+def _question_tokens(text: str) -> set[str]:
+    """将问题文本切成用于相似度判断的轻量 token 集合。"""
+    import re
+
+    normalized = re.sub(r"\s+", "", text or "").lower()
+    words = re.findall(r"[\u4e00-\u9fff]+|[a-z0-9]+", normalized)
+    tokens: set[str] = set()
+    for word in words:
+        if re.fullmatch(r"[\u4e00-\u9fff]+", word):
+            if len(word) <= 2:
+                tokens.add(word)
+            else:
+                tokens.update(word)
+                tokens.update(word[index : index + 2] for index in range(len(word) - 1))
+        else:
+            tokens.add(word)
+    return tokens
+
+
+def _question_similarity(left: str, right: str) -> float:
+    """基于分词 token 的 Jaccard 相似度。"""
+    left_tokens = _question_tokens(left)
+    right_tokens = _question_tokens(right)
+    if not left_tokens or not right_tokens:
+        return 0.0
+    return len(left_tokens & right_tokens) / len(left_tokens | right_tokens)
+
+
+def _select_diverse_top_questions(questions: list[Any], limit: int = 10) -> list[Any]:
+    """按评分优先选择问题，同时跳过语义相近的问题。"""
+    sorted_questions = sorted(
+        questions,
+        key=lambda x: (
+            x.score is None,
+            -(x.score or 0),
+            x.created_at,
+        ),
+    )
+    selected = []
+    for question in sorted_questions:
+        if any(
+            _question_similarity(question.text, picked.text)
+            >= _QUESTION_SIMILARITY_THRESHOLD
+            for picked in selected
+        ):
+            continue
+        selected.append(question)
+        if len(selected) >= limit:
+            break
+    return selected
+
 
 class ApiResponse(BaseModel):
     """统一 REST 响应结构。"""
@@ -1139,7 +1193,7 @@ def _build_report_material(
     course_id: int,
     db: Session,
 ) -> str:
-    """收集所有课堂数据并构建报告材料（从旧到新排序，带标题）。"""
+    """构建课后报告所需的核心材料。"""
     import json
 
     parts = []
@@ -1165,7 +1219,7 @@ def _build_report_material(
     if transcripts:
         parts.append("# 老师讲课原文（可能有转译错误）\n\n")
         for transcript in transcripts:
-            parts.append(f"{transcript.text}")
+            parts.append(f"{transcript.text}\n")
         parts.append("\n\n")
 
     # 4. 分段小结（从旧到新）
@@ -1178,55 +1232,62 @@ def _build_report_material(
             parts.append(f"{summary.text}\n")
         parts.append("\n\n")
 
-    # 5. 问题（从旧到新）
+    # 5. 高分模拟学生提问（按评分优先，跳过相似问题）
     questions = list_questions_by_session(db, session_id)
-    # 需要反序因为默认是新到旧
-    questions_asc = sorted(questions, key=lambda x: x.created_at)
-    if questions_asc:
-        parts.append("# 课堂提问\n\n")
-        for q in questions_asc:
-            parts.append(f"{q.text}\n")
+    top_questions = _select_diverse_top_questions(questions, limit=10)
+    if top_questions:
+        parts.append("# 高分模拟学生提问（最多 10 个，请在报告中生成参考回答）\n\n")
+        for index, q in enumerate(top_questions, start=1):
+            parts.append(f"{index}. {q.text}\n")
             parts.append(f"状态: {q.status or 'N/A'}\n")
             parts.append(f"分数: {q.score or 'N/A'}\n\n")
 
-    # 6. 关键词（从旧到新）
-    keywords = list_keywords_by_session(db, session_id)
-    # 需要反序因为默认是新到旧
+    # 6. LLM 关键词（去重）
+    keywords = list_keywords_by_session(db, session_id, source="llm")
     keywords_asc = sorted(keywords, key=lambda x: x.created_at)
-    if keywords_asc:
-        parts.append("# 关键词\n\n")
-        for kw in keywords_asc:
-            try:
-                keyword_list = json.loads(kw.keyword_sets)
-                source_label = "算法" if kw.source == "algorithm" else "LLM"
-                parts.append(f"[{source_label}] {'、'.join(keyword_list)}\n\n")
-            except (json.JSONDecodeError, TypeError):
-                source_label = "算法" if kw.source == "algorithm" else "LLM"
-                parts.append(f"[{source_label}] {kw.keyword_sets}\n\n")
+    deduped_keywords = []
+    seen_keywords = set()
+    for kw in keywords_asc:
+        try:
+            raw_keywords = json.loads(kw.keyword_sets)
+        except (json.JSONDecodeError, TypeError):
+            raw_keywords = kw.keyword_sets
+        if isinstance(raw_keywords, str):
+            keyword_items = [raw_keywords]
+        else:
+            keyword_items = raw_keywords if isinstance(raw_keywords, list) else []
+        for item in keyword_items:
+            keyword = str(item).strip()
+            if not keyword or keyword in seen_keywords:
+                continue
+            seen_keywords.add(keyword)
+            deduped_keywords.append(keyword)
+    if deduped_keywords:
+        parts.append("# LLM关键词（已去重）\n\n")
+        parts.append("、".join(deduped_keywords))
+        parts.append("\n\n")
 
     # 7. 知识点（从旧到新）
     knowledge_points = list_knowledge_points_by_session(db, session_id)
-    # 需要反序因为默认是新到旧
     kp_asc = sorted(knowledge_points, key=lambda x: x.created_at)
     if kp_asc:
         parts.append("# 知识点\n\n")
-        for kp in kp_asc:
-            parts.append(f"名称: {kp.name}\n")
+        for index, kp in enumerate(kp_asc, start=1):
+            parts.append(f"{index}. {kp.name}\n")
             if kp.description:
-                parts.append(f"描述: {kp.description}\n")
+                parts.append(f"说明: {kp.description}\n")
             if kp.difficulty:
                 parts.append(f"难度: {kp.difficulty}\n")
             parts.append("\n")
 
-    # 8. 小测题目（从旧到新）
+    # 8. 小测题目（从旧到新，原样展示）
     quiz_items = list_quiz_items_by_session(db, session_id)
-    # 需要反序因为默认是新到旧
     quiz_asc = sorted(quiz_items, key=lambda x: x.created_at)
     if quiz_asc:
-        parts.append("# 小测题目\n\n")
-        for quiz in quiz_asc:
-            parts.append(f"题型: {quiz.type or 'N/A'}\n")
-            parts.append(f"问题: {quiz.question}\n")
+        parts.append("# 小测题目（原样展示）\n\n")
+        for index, quiz in enumerate(quiz_asc, start=1):
+            parts.append(f"{index}. 题型: {quiz.type or 'N/A'}\n")
+            parts.append(f"题目: {quiz.question}\n")
             if quiz.answer:
                 parts.append(f"答案: {quiz.answer}\n")
             if quiz.explanation:

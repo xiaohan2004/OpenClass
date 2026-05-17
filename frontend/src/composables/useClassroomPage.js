@@ -168,6 +168,7 @@ export function useClassroomPage() {
   const logs = ref([])
   const wsTrafficLogs = ref([])
   const reportToast = ref(null)
+  const reportGenerationInFlight = ref(false)
   let reportToastTimer = null
   const onDeviceChange = () => {
     void refreshMicrophones()
@@ -358,6 +359,10 @@ export function useClassroomPage() {
     const ws = wsRef.value
     return Boolean(ws && ws.readyState === WebSocket.OPEN && !questionAskInFlight.value && !isQuestionAsking.value)
   })
+
+  const canGenerateReportFromDebug = computed(() =>
+    Boolean(selectedSessionId.value && !reportGenerationInFlight.value)
+  )
 
   const latestKnowledgePoint = computed(
     () => knowledgePoints.value[knowledgePoints.value.length - 1] || null
@@ -759,6 +764,34 @@ export function useClassroomPage() {
 
   function triggerManualQuestion() {
     sendAskQuestion('manual_debug')
+  }
+
+  function startReportGeneration(sessionId, successLogMessage) {
+    return generateSessionReport(sessionId)
+      .then(() => {
+        appendLog(`${formatTime(Math.floor(Date.now() / 1000))} ${successLogMessage}`)
+        showReportToast('success', '课后报告生成任务已提交')
+      })
+      .catch((reportError) => {
+        const errorMessage = reportError instanceof Error ? reportError.message : '未知错误'
+        appendLog(
+          `${formatTime(Math.floor(Date.now() / 1000))} 课后报告触发失败：${errorMessage}`
+        )
+        showReportToast('error', `课后报告生成任务提交失败：${errorMessage}`)
+      })
+  }
+
+  async function triggerDebugReportGeneration() {
+    if (!selectedSessionId.value || reportGenerationInFlight.value) {
+      return
+    }
+
+    reportGenerationInFlight.value = true
+    try {
+      await startReportGeneration(selectedSessionId.value, '调试触发课后报告生成')
+    } finally {
+      reportGenerationInFlight.value = false
+    }
   }
 
   function updateSilenceQuestionTrigger(level) {
@@ -1951,18 +1984,7 @@ export function useClassroomPage() {
       })
       appendLog(`${formatTime(Math.floor(Date.now() / 1000))} 课堂结束，延迟关闭接收`) 
 
-      generateSessionReport(selectedSessionId.value)
-        .then(() => {
-          appendLog(`${formatTime(Math.floor(Date.now() / 1000))} 已触发课后报告生成`) 
-          showReportToast('success', '课后报告生成任务已提交')
-        })
-        .catch((reportError) => {
-          const errorMessage = reportError instanceof Error ? reportError.message : '未知错误'
-          appendLog(
-            `${formatTime(Math.floor(Date.now() / 1000))} 课后报告触发失败：${errorMessage}`
-          )
-          showReportToast('error', `课后报告生成任务提交失败：${errorMessage}`)
-        })
+      startReportGeneration(selectedSessionId.value, '已触发课后报告生成')
 
       await loadSessions(selectedCourseId.value, { preserveSelection: true })
       await loadSessionData(selectedSessionId.value)
@@ -2080,6 +2102,7 @@ export function useClassroomPage() {
     autoQuestionTriggerLabel,
     autoQuestionTriggerState,
     canManualAskQuestion,
+    canGenerateReportFromDebug,
     stats,
     logs,
     wsTrafficLogs,
@@ -2119,6 +2142,7 @@ export function useClassroomPage() {
     endCurrentSession,
     refreshMicrophones,
     triggerManualQuestion,
+    triggerDebugReportGeneration,
     clearWsTrafficLogs
   }
 }

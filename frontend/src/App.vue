@@ -344,6 +344,17 @@
               手动提问
             </button>
           </section>
+          <section class="debug-question-panel">
+            <p class="debug-meta">手动触发一次课后报告生成。</p>
+            <button
+              class="ghost-button debug-action-button"
+              type="button"
+              :disabled="!canGenerateReportFromDebug"
+              @click="triggerDebugReportGeneration"
+            >
+              生成报告
+            </button>
+          </section>
           <div class="debug-header-row">
             <p class="debug-meta">WS 收发记录（共 {{ wsTrafficLogs.length }} 条）</p>
             <div class="debug-actions">
@@ -491,6 +502,7 @@ const {
   autoQuestionTriggerLabel,
   autoQuestionTriggerState,
   canManualAskQuestion,
+  canGenerateReportFromDebug,
   wsTrafficLogs,
   reportToast,
   sessionStatusLabel,
@@ -527,6 +539,7 @@ const {
   toggleStartPause,
   endCurrentSession,
   triggerManualQuestion,
+  triggerDebugReportGeneration,
   clearWsTrafficLogs
 } = useClassroomPage()
 
