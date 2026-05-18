@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import time
+from functools import lru_cache
 
 from sqlmodel import Session
 
@@ -36,10 +37,24 @@ from .quiz import QuizProcessor
 logger = logging.getLogger(__name__)
 
 
-question_processor = QuestionProcessor()  # 提问处理器实例
-keyword_processor = KeywordProcessor()  # 关键词处理器实例
-knowledge_processor = KnowledgeProcessor()  # 知识点处理器实例
-quiz_processor = QuizProcessor()  # 小测处理器实例
+@lru_cache(maxsize=1)
+def get_question_processor() -> QuestionProcessor:
+    return QuestionProcessor()
+
+
+@lru_cache(maxsize=1)
+def get_keyword_processor() -> KeywordProcessor:
+    return KeywordProcessor()
+
+
+@lru_cache(maxsize=1)
+def get_knowledge_processor() -> KnowledgeProcessor:
+    return KnowledgeProcessor()
+
+
+@lru_cache(maxsize=1)
+def get_quiz_processor() -> QuizProcessor:
+    return QuizProcessor()
 
 # 计数器，用于控制关键词/知识点/小测处理的触发间隔
 _handle_audio_call_count = 0
@@ -112,7 +127,7 @@ async def handle_audio(
 
 async def ask_question(context: ClassContext, safe_ws: SafeWebSocket) -> None:
     """由前端显式触发一次开口提问。"""
-    question_to_ask = question_processor.select_question_to_ask()
+    question_to_ask = get_question_processor().select_question_to_ask()
     if not question_to_ask:
         await safe_ws.send_json(
             {
@@ -163,7 +178,7 @@ async def _background_tasks_processing(
     summary_text, questions = await asyncio.gather(
         asyncio.to_thread(context.generate_summary_if_needed),
         asyncio.to_thread(
-            question_processor.generate_scored_questions,
+            get_question_processor().generate_scored_questions,
             context.get_questioning_texts(),
         ),
     )
@@ -237,11 +252,11 @@ async def _background_tasks_processing(
 
             # 并行执行关键词、知识点、小测处理
             keywords_result, knowledge_result, quiz_result = await asyncio.gather(
-                asyncio.to_thread(keyword_processor.extract_keywords_llm, context_text),
+                asyncio.to_thread(get_keyword_processor().extract_keywords_llm, context_text),
                 asyncio.to_thread(
-                    knowledge_processor.generate_knowledge_point, context_text
+                    get_knowledge_processor().generate_knowledge_point, context_text
                 ),
-                asyncio.to_thread(quiz_processor.generate_quiz_item, context_text),
+                asyncio.to_thread(get_quiz_processor().generate_quiz_item, context_text),
                 return_exceptions=True,
             )
             # 后台执行algorithm提取关键词（不阻塞主流程）
@@ -468,7 +483,9 @@ def _background_keyword_extraction(
 ) -> None:
     """后台执行关键词提取（不阻塞主流程）"""
     try:
-        keywords_result = keyword_processor.extract_keywords_algorithm(context_text)
+        keywords_result = get_keyword_processor().extract_keywords_algorithm(
+            context_text
+        )
 
         if keywords_result:
             logger.info("后台关键词提取结果: %s", keywords_result)

@@ -60,16 +60,23 @@ class TestHandleAudio(unittest.IsolatedAsyncioTestCase):
                 )
 
     def test_background_keyword_extraction_uses_algorithm_and_persists(self):
+        mock_processor = MagicMock()
+        mock_processor.extract_keywords_algorithm.return_value = [
+            "机器学习",
+            "神经网络",
+        ]
+
         with (
             patch(
-                "app.core.main_flow.keyword_processor.extract_keywords_algorithm",
-                return_value=["机器学习", "神经网络"],
-            ) as mock_extract,
+                "app.core.main_flow.get_keyword_processor",
+                return_value=mock_processor,
+            ) as mock_get_processor,
             patch("app.core.main_flow._persist_keywords") as mock_persist,
         ):
             _background_keyword_extraction(1, "课堂文本", [10, 11])
 
-        mock_extract.assert_called_once_with("课堂文本")
+        mock_get_processor.assert_called_once_with()
+        mock_processor.extract_keywords_algorithm.assert_called_once_with("课堂文本")
         mock_persist.assert_called_once_with(
             1,
             ["机器学习", "神经网络"],
@@ -78,16 +85,20 @@ class TestHandleAudio(unittest.IsolatedAsyncioTestCase):
         )
 
     def test_background_keyword_extraction_handles_algorithm_errors(self):
+        mock_processor = MagicMock()
+        mock_processor.extract_keywords_algorithm.side_effect = RuntimeError("算法失败")
+
         with (
             patch(
-                "app.core.main_flow.keyword_processor.extract_keywords_algorithm",
-                side_effect=RuntimeError("算法失败"),
-            ) as mock_extract,
+                "app.core.main_flow.get_keyword_processor",
+                return_value=mock_processor,
+            ) as mock_get_processor,
             patch("app.core.main_flow._persist_keywords") as mock_persist,
         ):
             _background_keyword_extraction(1, "课堂文本", [10, 11])
 
-        mock_extract.assert_called_once_with("课堂文本")
+        mock_get_processor.assert_called_once_with()
+        mock_processor.extract_keywords_algorithm.assert_called_once_with("课堂文本")
         mock_persist.assert_not_called()
 
     async def test_handle_audio_does_not_send_tts_out(
@@ -101,9 +112,11 @@ class TestHandleAudio(unittest.IsolatedAsyncioTestCase):
         with patch("app.core.main_flow.asr.transcribe", return_value="讲课文本"):
             with patch("app.core.main_flow.start_background_tasks"):
                 with patch(
-                    "app.core.main_flow.question_processor.select_question_to_ask",
-                    return_value="提问内容",
-                ):
+                    "app.core.main_flow.get_question_processor",
+                ) as mock_get_processor:
+                    mock_processor = MagicMock()
+                    mock_processor.select_question_to_ask.return_value = "提问内容"
+                    mock_get_processor.return_value = mock_processor
                     with patch(
                         "app.core.main_flow.tts.synthesize_to_url",
                         return_value="http://audio.url",
@@ -123,10 +136,10 @@ class TestHandleAudio(unittest.IsolatedAsyncioTestCase):
         safe_ws = MagicMock(spec=SafeWebSocket)
         safe_ws.send_json = AsyncMock()
 
-        with patch(
-            "app.core.main_flow.question_processor.select_question_to_ask",
-            return_value="提问内容",
-        ):
+        mock_processor = MagicMock()
+        mock_processor.select_question_to_ask.return_value = "提问内容"
+
+        with patch("app.core.main_flow.get_question_processor", return_value=mock_processor):
             with patch(
                 "app.core.main_flow.tts.synthesize_to_url",
                 return_value="http://audio.url",
@@ -149,10 +162,10 @@ class TestHandleAudio(unittest.IsolatedAsyncioTestCase):
         safe_ws = MagicMock(spec=SafeWebSocket)
         safe_ws.send_json = AsyncMock()
 
-        with patch(
-            "app.core.main_flow.question_processor.select_question_to_ask",
-            return_value=None,
-        ):
+        mock_processor = MagicMock()
+        mock_processor.select_question_to_ask.return_value = None
+
+        with patch("app.core.main_flow.get_question_processor", return_value=mock_processor):
             await ask_question(context, safe_ws)
 
         safe_ws.send_json.assert_awaited_once_with(
@@ -198,17 +211,20 @@ class TestBackgroundTasks(unittest.IsolatedAsyncioTestCase):
                                 ("问题二", 0.9, 12, 1712995601),
                             ],
                         ):
+                            mock_processor = MagicMock()
+                            mock_processor.generate_scored_questions.return_value = [
+                                ScoredQuestion("问题一", 0.8),
+                                ScoredQuestion("问题二", 0.9),
+                            ]
                             with patch(
-                                "app.core.main_flow.question_processor.generate_scored_questions",
-                                return_value=[
-                                    ScoredQuestion("问题一", 0.8),
-                                    ScoredQuestion("问题二", 0.9),
-                                ],
-                            ) as mock_gen_questions:
+                                "app.core.main_flow.get_question_processor",
+                                return_value=mock_processor,
+                            ) as mock_get_processor:
                                 await _background_tasks_processing(context, safe_ws)
 
                                 mock_generate_summary.assert_called_once()
-                                mock_gen_questions.assert_called_once()
+                                mock_get_processor.assert_called_once_with()
+                                mock_processor.generate_scored_questions.assert_called_once()
                                 sent_types = [
                                     call.args[0]["type"]
                                     for call in safe_ws.send_json.await_args_list
@@ -355,14 +371,20 @@ class TestMainFlowDatabaseIntegration(unittest.IsolatedAsyncioTestCase):
             "generate_summary_if_needed",
             return_value={"text": "数据库小结", "start": 0, "end": 2},
         ):
+            mock_processor = MagicMock()
+            mock_processor.generate_scored_questions.return_value = [
+                ScoredQuestion("数据库问题一", 0.8),
+                ScoredQuestion("数据库问题二", 0.9),
+            ]
+
             with patch(
-                "app.core.main_flow.question_processor.generate_scored_questions",
-                return_value=[
-                    ScoredQuestion("数据库问题一", 0.8),
-                    ScoredQuestion("数据库问题二", 0.9),
-                ],
-            ):
+                "app.core.main_flow.get_question_processor",
+                return_value=mock_processor,
+            ) as mock_get_processor:
                 await _background_tasks_processing(context, safe_ws)
+
+            mock_get_processor.assert_called_once_with()
+            mock_processor.generate_scored_questions.assert_called_once()
 
         with Session(db_session_module.get_engine()) as db:
             summaries = list_segment_summaries_by_session(db, self.session_id)
