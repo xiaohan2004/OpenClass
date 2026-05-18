@@ -219,6 +219,7 @@ __marimo__/
 # Other files to ignore
 TestReport.txt
 .claude/
+.opencode/
 
 # data files
 data/
