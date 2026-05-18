@@ -55,6 +55,10 @@ python -m pip install -r backend/requirements.txt
 python -m playwright install chromium
 ```
 
+建议使用 Python 3.10.9，因为 `backend/requirements.txt` 是基于该版本验证的。
+
+如果你使用其他 Python 版本，可能会遇到依赖安装失败或依赖解析异常的问题。遇到这种情况时，请根据报错信息手动安装缺失的依赖。所有后端依赖都集中在 `backend/requirements.txt` 中，可以参考该文件逐项安装，直到依赖解析通过。
+
 安装前端依赖：
 
 ```bash
