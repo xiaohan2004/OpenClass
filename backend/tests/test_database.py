@@ -682,6 +682,18 @@ class TestDatabase(unittest.TestCase):
         }
         self.assertIn("source", keyword_columns)
 
+    def test_log_schema_status_outputs_table_comparison(self):
+        init_db()
+
+        with self.assertLogs("app.db.session", level="INFO") as captured:
+            matched = db_session_module.log_schema_status()
+
+        self.assertTrue(matched)
+        output = "\n".join(captured.output)
+        self.assertIn("开始检查数据库表结构", output)
+        self.assertIn(f"表一致: {Setting.__tablename__}", output)
+        self.assertIn("数据库结构检查完成：一致", output)
+
 
 def main():
     suite = unittest.TestLoader().loadTestsFromTestCase(TestDatabase)

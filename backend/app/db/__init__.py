@@ -23,7 +23,7 @@ from .models import (
     QuizItem,
     QuizItemTranscriptMap,
 )
-from .session import engine, get_engine, get_session, init_db
+from .session import engine, get_engine, get_session, init_db, log_schema_status
 
 __all__ = [
     "Course",
@@ -51,4 +51,5 @@ __all__ = [
     "get_engine",
     "get_session",
     "init_db",
+    "log_schema_status",
 ]
