@@ -11,6 +11,9 @@ from fastapi.responses import JSONResponse
 from app.api.routes.rest import router as rest_router
 from app.api.routes.websocket import router as websocket_router
 from app.db import init_db
+from app.utils.model_download_policy import (
+    prepare_keyword_model_download_policy,
+)
 
 # 配置日志
 logging.basicConfig(
@@ -23,6 +26,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     """应用生命周期，启动时初始化数据库。"""
+    prepare_keyword_model_download_policy()
     init_db()
     logger.info("数据库初始化完成")
     yield

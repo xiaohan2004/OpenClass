@@ -20,6 +20,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from scipy.spatial.distance import cosine
 from sentence_transformers import SentenceTransformer
 
+from app.utils.model_download_policy import get_keyword_model_download_allowed
+
 logger = logging.getLogger(__name__)
 
 
@@ -225,12 +227,31 @@ class KeywordExtractor:
         self.n_clusters = n_clusters
 
         logger.info("初始化KeywordExtractor：embedding模型=%s", embedding_model)
+        allow_model_download = get_keyword_model_download_allowed()
+        local_files_only = not allow_model_download
+        logger.info(
+            "关键词模型加载策略：%s",
+            "允许联网下载" if allow_model_download else "仅使用本地缓存",
+        )
         # 尝试加载中文优化模型，失败时降级到 all-MiniLM-L6-v2
         try:
-            self.embedding_model = SentenceTransformer(embedding_model)
+            self.embedding_model = SentenceTransformer(
+                embedding_model,
+                local_files_only=local_files_only,
+            )
         except Exception as e:
             logger.warning("加载中文模型失败(%s)，降级到英文模型", e)
-            self.embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+            try:
+                self.embedding_model = SentenceTransformer(
+                    "all-MiniLM-L6-v2",
+                    local_files_only=local_files_only,
+                )
+            except Exception as fallback_exc:
+                if allow_model_download:
+                    raise
+                raise RuntimeError(
+                    "本地模型缓存不可用，且当前启动已选择不联网下载"
+                ) from fallback_exc
 
         self.keybert_model = KeyBERT(model=self.embedding_model)
         logger.info("KeywordExtractor 初始化完成")
