@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import os
 import time
 from functools import lru_cache
 
@@ -35,6 +36,8 @@ from .knowledge import KnowledgeProcessor
 from .quiz import QuizProcessor
 
 logger = logging.getLogger(__name__)
+
+_DISABLE_KEYWORD_ALGORITHM = os.environ.get("DISABLE_KEYWORD_ALGORITHM", "").lower() in ("1", "true", "yes")
 
 
 @lru_cache(maxsize=1)
@@ -260,14 +263,17 @@ async def _background_tasks_processing(
                 return_exceptions=True,
             )
             # 后台执行algorithm提取关键词（不阻塞主流程）
-            asyncio.create_task(
-                asyncio.to_thread(
-                    _background_keyword_extraction,
-                    context.session_id,
-                    context_text,
-                    transcript_ids,
+            if not _DISABLE_KEYWORD_ALGORITHM:
+                asyncio.create_task(
+                    asyncio.to_thread(
+                        _background_keyword_extraction,
+                        context.session_id,
+                        context_text,
+                        transcript_ids,
+                    )
                 )
-            )
+            else:
+                logger.debug("传统算法关键词提取已禁用，跳过后台提取任务")
 
             # 发送结果到前端
             if keywords_result and not isinstance(keywords_result, Exception):

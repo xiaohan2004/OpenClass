@@ -2,7 +2,8 @@
 FastAPI 应用入口
 
 环境变量：
-    OPENCLASS_OFFLINE=1  - 强制离线模式，跳过模型联网检查，加快启动
+    OPENCLASS_OFFLINE=1            - 强制离线模式，跳过模型联网检查，加快启动
+    DISABLE_KEYWORD_ALGORITHM=1    - 关闭传统算法提取关键词（仅使用 LLM 路径）
 """
 
 from contextlib import asynccontextmanager
@@ -17,6 +18,8 @@ _startup_total = time.perf_counter()
 
 # 检测离线模式
 _offline_mode = os.environ.get("OPENCLASS_OFFLINE", "").lower() in ("1", "true", "yes")
+# 检测是否关闭传统算法关键词提取
+_disable_keyword_algorithm = os.environ.get("DISABLE_KEYWORD_ALGORITHM", "").lower() in ("1", "true", "yes")
 
 # 配置日志（必须在任何业务导入之前，以便所有模块都能使用）
 logging.basicConfig(
@@ -27,6 +30,8 @@ logger = logging.getLogger(__name__)
 logger.info("[启动耗时] === 程序启动开始 ===")
 if _offline_mode:
     logger.info("[启动模式] 离线模式已启用 (OPENCLASS_OFFLINE=1)")
+if _disable_keyword_algorithm:
+    logger.info("[启动模式] 传统算法提取关键词已关闭 (DISABLE_KEYWORD_ALGORITHM=1)")
 
 
 @asynccontextmanager

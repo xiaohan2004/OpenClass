@@ -128,6 +128,30 @@ python -m app.main
 OPENCLASS_OFFLINE=1 python -m app.main
 ```
 
+**关闭传统算法关键词提取：** 如果不想使用传统 ML 算法（TF-IDF / KeyBERT / SentenceTransformer）提取关键词，只保留 LLM 路径，可以设置 `DISABLE_KEYWORD_ALGORITHM=1`：
+
+```bash
+# Windows PowerShell
+$env:DISABLE_KEYWORD_ALGORITHM="1"
+cd backend
+python -m app.main
+
+# Linux / macOS
+DISABLE_KEYWORD_ALGORITHM=1 python -m app.main
+```
+
+**同时启用两个选项：**
+
+```bash
+# Linux / macOS
+OPENCLASS_OFFLINE=1 DISABLE_KEYWORD_ALGORITHM=1 python -m app.main
+
+# Windows PowerShell
+$env:OPENCLASS_OFFLINE="1"; $env:DISABLE_KEYWORD_ALGORITHM="1"
+cd backend
+python -m app.main
+```
+
 然后启动前端：
 
 ```bash

@@ -6,14 +6,28 @@
 
 import logging
 import json
+import os
 import re
 import time
 
 from app.config import get_settings
-from app.core.keyword_extraction_algorithm import KeywordExtractor, KeywordScore
 from app.services.llm import generate_keywords
 
 logger = logging.getLogger(__name__)
+
+_DISABLE_KEYWORD_ALGORITHM = os.environ.get("DISABLE_KEYWORD_ALGORITHM", "").lower() in ("1", "true", "yes")
+
+# 延迟加载重量级依赖，仅在启用传统算法时才导入
+_keyword_extraction_algorithm = None
+
+
+def _get_keyword_extraction_module():
+    """延迟导入关键词提取算法模块。"""
+    global _keyword_extraction_algorithm
+    if _keyword_extraction_algorithm is None and not _DISABLE_KEYWORD_ALGORITHM:
+        from app.core import keyword_extraction_algorithm
+        _keyword_extraction_algorithm = keyword_extraction_algorithm
+    return _keyword_extraction_algorithm
 
 
 class KeywordProcessor:
@@ -34,8 +48,13 @@ class KeywordProcessor:
         self.extractor = self._create_extractor(settings)
         logger.info("KeywordProcessor 初始化完成")
 
-    def _create_extractor(self, settings) -> KeywordExtractor:
+    def _create_extractor(self, settings):
         """从配置创建KeywordExtractor实例"""
+        mod = _get_keyword_extraction_module()
+        if mod is None:
+            raise RuntimeError(
+                "传统算法关键词提取已被 DISABLE_KEYWORD_ALGORITHM 禁用"
+            )
         embedding_model = getattr(
             settings, "keyword_embedding_model", "all-MiniLM-L6-v2"
         )
@@ -44,7 +63,7 @@ class KeywordProcessor:
         top_m_history = getattr(settings, "keyword_top_m_history", 15)
         top_k_output = getattr(settings, "keyword_top_k_output", 10)
 
-        return KeywordExtractor(
+        return mod.KeywordExtractor(
             embedding_model=embedding_model,
             top_n_tfidf=top_n_tfidf,
             top_n_keybert=top_n_keybert,
@@ -120,14 +139,19 @@ class KeywordProcessor:
 
         该方法作为主流程后台算法提取的显式入口，区别于
         extract_keywords_llm 的大模型提取路径。
+
+        当 DISABLE_KEYWORD_ALGORITHM=1 时返回空列表。
         """
+        if _DISABLE_KEYWORD_ALGORITHM:
+            logger.info("传统算法关键词提取已禁用，跳过")
+            return []
         return self.extract_keywords(transcript, history_summary)
 
     def extract_keywords_with_scores(
         self,
         transcript: str,
         history_summary: str | None = None,
-    ) -> list[KeywordScore]:
+    ) -> list:
         """
         提取关键词并返回详细分数
 
