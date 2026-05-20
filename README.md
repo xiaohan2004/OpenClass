@@ -116,6 +116,18 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - `python -m app.main` 会执行 `app/main.py` 中的 `uvicorn.run(...)`，不带热重载，适合普通启动或快速验证
 - `uvicorn app.main:app --reload ...` 由 Uvicorn 直接导入 `app.main:app`，带热重载，代码修改后会自动重启，更适合开发调试。
 
+**离线模式启动：** 如果没有网络连接或者网络不稳定时，启动建议设置 `OPENCLASS_OFFLINE=1` 环境变量，跳过模型联网检查，加快启动速度：
+
+```bash
+# Windows PowerShell
+$env:OPENCLASS_OFFLINE="1"
+cd backend
+python -m app.main
+
+# Linux / macOS
+OPENCLASS_OFFLINE=1 python -m app.main
+```
+
 然后启动前端：
 
 ```bash

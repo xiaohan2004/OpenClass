@@ -8,21 +8,16 @@
 """
 
 import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
-import jieba
-import numpy as np
-from keybert import KeyBERT
-from sklearn.cluster import KMeans
-from sklearn.feature_extraction.text import TfidfVectorizer
-from scipy.spatial.distance import cosine
-from sentence_transformers import SentenceTransformer
-
-from app.utils.model_download_policy import get_keyword_model_download_allowed
+if TYPE_CHECKING:
+    import numpy as np
 
 logger = logging.getLogger(__name__)
+logger.info("[启动耗时] keyword_extraction_algorithm.py | 模块加载完成（重量级依赖已延迟）")
 
 
 def _load_stopwords() -> set[str]:
@@ -174,7 +169,90 @@ def _get_default_stopwords() -> set[str]:
 
 
 # 加载停用词表
+_t_sw = time.perf_counter()
 STOPWORDS = _load_stopwords()
+logger.info("[启动耗时] keyword_extraction_algorithm.py | STOPWORDS 加载完成 (共%d个) | 耗时=%.3fs",
+            len(STOPWORDS), time.perf_counter() - _t_sw)
+
+
+# ===== 延迟加载的重量级依赖 =====
+
+# 标记是否已加载
+_heavy_deps_loaded = False
+_jieba = None
+_np = None
+_KeyBERT = None
+_KMeans = None
+_TfidfVectorizer = None
+_cosine = None
+_SentenceTransformer = None
+
+
+def _ensure_heavy_deps_loaded():
+    """在首次需要时加载重量级依赖（线程安全）。"""
+    global _heavy_deps_loaded, _jieba, _np, _KeyBERT, _KMeans
+    global _TfidfVectorizer, _cosine, _SentenceTransformer
+
+    if _heavy_deps_loaded:
+        return
+
+    import threading
+    # 使用模块级锁确保线程安全
+    if not hasattr(_ensure_heavy_deps_loaded, '_lock'):
+        _ensure_heavy_deps_loaded._lock = threading.Lock()
+
+    with _ensure_heavy_deps_loaded._lock:
+        if _heavy_deps_loaded:
+            return
+
+        _t_start = time.perf_counter()
+        logger.info("[启动耗时] keyword_extraction_algorithm.py | 开始加载重量级依赖...")
+
+        _t = time.perf_counter()
+        import jieba as _jieba_mod
+        _jieba = _jieba_mod
+        logger.info("[启动耗时] keyword_extraction_algorithm.py | import jieba 完成 | 耗时=%.3fs",
+                    time.perf_counter() - _t)
+
+        _t = time.perf_counter()
+        import numpy as _np_mod
+        _np = _np_mod
+        logger.info("[启动耗时] keyword_extraction_algorithm.py | import numpy 完成 | 耗时=%.3fs",
+                    time.perf_counter() - _t)
+
+        _t = time.perf_counter()
+        from keybert import KeyBERT as _KeyBERT_cls
+        _KeyBERT = _KeyBERT_cls
+        logger.info("[启动耗时] keyword_extraction_algorithm.py | import keybert 完成 | 耗时=%.3fs",
+                    time.perf_counter() - _t)
+
+        _t = time.perf_counter()
+        from sklearn.cluster import KMeans as _KMeans_cls
+        _KMeans = _KMeans_cls
+        logger.info("[启动耗时] keyword_extraction_algorithm.py | import sklearn.cluster.KMeans 完成 | 耗时=%.3fs",
+                    time.perf_counter() - _t)
+
+        _t = time.perf_counter()
+        from sklearn.feature_extraction.text import TfidfVectorizer as _TfidfVectorizer_cls
+        _TfidfVectorizer = _TfidfVectorizer_cls
+        logger.info("[启动耗时] keyword_extraction_algorithm.py | import sklearn TfidfVectorizer 完成 | 耗时=%.3fs",
+                    time.perf_counter() - _t)
+
+        _t = time.perf_counter()
+        from scipy.spatial.distance import cosine as _cosine_fn
+        _cosine = _cosine_fn
+        logger.info("[启动耗时] keyword_extraction_algorithm.py | import scipy 完成 | 耗时=%.3fs",
+                    time.perf_counter() - _t)
+
+        _t = time.perf_counter()
+        from sentence_transformers import SentenceTransformer as _ST_cls
+        _SentenceTransformer = _ST_cls
+        logger.info("[启动耗时] keyword_extraction_algorithm.py | import sentence_transformers 完成 | 耗时=%.3fs",
+                    time.perf_counter() - _t)
+
+        _heavy_deps_loaded = True
+        logger.info("[启动耗时] keyword_extraction_algorithm.py | 所有重量级依赖加载完成 | 总耗时=%.3fs",
+                    time.perf_counter() - _t_start)
 
 
 @dataclass
@@ -227,33 +305,18 @@ class KeywordExtractor:
         self.n_clusters = n_clusters
 
         logger.info("初始化KeywordExtractor：embedding模型=%s", embedding_model)
-        allow_model_download = get_keyword_model_download_allowed()
-        local_files_only = not allow_model_download
-        logger.info(
-            "关键词模型加载策略：%s",
-            "允许联网下载" if allow_model_download else "仅使用本地缓存",
-        )
+
+        # 确保重量级依赖已加载（首次调用时才会真正导入）
+        _ensure_heavy_deps_loaded()
+
         # 尝试加载中文优化模型，失败时降级到 all-MiniLM-L6-v2
         try:
-            self.embedding_model = SentenceTransformer(
-                embedding_model,
-                local_files_only=local_files_only,
-            )
+            self.embedding_model = _SentenceTransformer(embedding_model)
         except Exception as e:
             logger.warning("加载中文模型失败(%s)，降级到英文模型", e)
-            try:
-                self.embedding_model = SentenceTransformer(
-                    "all-MiniLM-L6-v2",
-                    local_files_only=local_files_only,
-                )
-            except Exception as fallback_exc:
-                if allow_model_download:
-                    raise
-                raise RuntimeError(
-                    "本地模型缓存不可用，且当前启动已选择不联网下载"
-                ) from fallback_exc
+            self.embedding_model = _SentenceTransformer("all-MiniLM-L6-v2")
 
-        self.keybert_model = KeyBERT(model=self.embedding_model)
+        self.keybert_model = _KeyBERT(model=self.embedding_model)
         logger.info("KeywordExtractor 初始化完成")
 
     def preprocess_text(self, text: str) -> list[str]:
@@ -267,7 +330,7 @@ class KeywordExtractor:
             处理后的词列表
         """
         # 中文分词
-        tokens = jieba.cut(text.strip(), cut_all=False)
+        tokens = _jieba.cut(text.strip(), cut_all=False)
 
         # 去停用词、过滤长度≤1的词
         filtered = [
@@ -332,7 +395,7 @@ class KeywordExtractor:
             for i in range(len(tokens) - 2):
                 all_ngrams.append(tokens[i] + tokens[i + 1] + tokens[i + 2])
 
-            vectorizer = TfidfVectorizer(
+            vectorizer = _TfidfVectorizer(
                 vocabulary=unique_vocab,
                 analyzer=str.split,
                 norm="l2",
@@ -346,7 +409,7 @@ class KeywordExtractor:
             scores = tfidf_matrix.toarray()[0]
 
             # 获取Top-N
-            top_indices = np.argsort(scores)[-self.top_n_tfidf :][::-1]
+            top_indices = _np.argsort(scores)[-self.top_n_tfidf :][::-1]
             tfidf_dict = {
                 feature_names[i]: float(scores[i]) for i in top_indices if scores[i] > 0
             }
@@ -381,7 +444,7 @@ class KeywordExtractor:
 
         try:
             # 中文文本预处理：分词后拼接，让 KeyBERT 能更好地识别
-            tokens = jieba.cut(text.strip(), cut_all=False)
+            tokens = _jieba.cut(text.strip(), cut_all=False)
             processed_text = " ".join(tokens)
 
             # 限制 n-gram 范围为 1-2，避免抽取整句
@@ -450,7 +513,7 @@ class KeywordExtractor:
             logger.error("历史关键词提取失败: %s", e)
             return []
 
-    def _compute_embeddings(self, words: list[str]) -> dict[str, np.ndarray]:
+    def _compute_embeddings(self, words: list[str]) -> dict[str, "np.ndarray"]:
         """
         计算词的embedding向量
 
@@ -473,8 +536,8 @@ class KeywordExtractor:
 
     def _compute_history_similarity(
         self,
-        candidate_embeddings: dict[str, np.ndarray],
-        history_embeddings: dict[str, np.ndarray],
+        candidate_embeddings: dict[str, "np.ndarray"],
+        history_embeddings: dict[str, "np.ndarray"],
     ) -> dict[str, float]:
         """
         计算每个候选词与历史词的最大余弦相似度
@@ -496,7 +559,7 @@ class KeywordExtractor:
             max_sim = 0.0
             for history_word, emb_h in history_embeddings.items():
                 # 余弦相似度 = 1 - cosine距离
-                sim = 1 - cosine(emb_c, emb_h)
+                sim = 1 - _cosine(emb_c, emb_h)
                 max_sim = max(max_sim, sim)
 
             similarities[candidate] = max(0.0, min(1.0, max_sim))
@@ -505,8 +568,8 @@ class KeywordExtractor:
 
     def _cluster_and_deduplicate(
         self,
-        candidates: dict[str, np.ndarray],
-    ) -> dict[str, np.ndarray]:
+        candidates: dict[str, "np.ndarray"],
+    ) -> dict[str, "np.ndarray"]:
         """
         基于embedding的聚类去重，每个cluster保留最接近中心的词
 
@@ -521,7 +584,7 @@ class KeywordExtractor:
 
         try:
             words = list(candidates.keys())
-            embeddings = np.array([candidates[w] for w in words])
+            embeddings = _np.array([candidates[w] for w in words])
 
             # 自动计算聚类数
             n_clusters = self.n_clusters
@@ -534,26 +597,26 @@ class KeywordExtractor:
                 return candidates
 
             # KMeans聚类
-            kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-            labels = kmeans.fit_predict(embeddings)
+            kmeans = _KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+            labels = kmeans.fit_predict(_np.array(embeddings))
 
             # 每个cluster保留最接近中心的词
             result = {}
             centers = kmeans.cluster_centers_
 
             for cluster_id in range(n_clusters):
-                cluster_indices = np.where(labels == cluster_id)[0]
+                cluster_indices = _np.where(labels == cluster_id)[0]
                 if len(cluster_indices) == 0:
                     continue
 
                 # 计算每个词与中心的距离
                 distances = [
-                    np.linalg.norm(embeddings[i] - centers[cluster_id])
+                    _np.linalg.norm(embeddings[i] - centers[cluster_id])
                     for i in cluster_indices
                 ]
 
                 # 选择最近的词
-                best_idx = cluster_indices[np.argmin(distances)]
+                best_idx = cluster_indices[_np.argmin(distances)]
                 best_word = words[best_idx]
                 result[best_word] = embeddings[best_idx]
 
