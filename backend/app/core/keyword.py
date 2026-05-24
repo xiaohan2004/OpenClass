@@ -45,7 +45,9 @@ class KeywordProcessor:
         self._config_loaded_at = time.monotonic()
 
         # 初始化提取器
-        self.extractor = self._create_extractor(settings)
+        self.extractor = None
+        if not _DISABLE_KEYWORD_ALGORITHM:
+            self.extractor = self._create_extractor(settings)
         logger.info("KeywordProcessor 初始化完成")
 
     def _create_extractor(self, settings):
@@ -78,6 +80,16 @@ class KeywordProcessor:
             return
 
         settings = get_settings()
+        if _DISABLE_KEYWORD_ALGORITHM:
+            self.extractor = None
+            self._config_refresh_interval_seconds = getattr(
+                settings,
+                "settings_refresh_interval_seconds",
+                self._config_refresh_interval_seconds,
+            )
+            self._config_loaded_at = time.monotonic()
+            return
+
         # 重新创建提取器以获取最新配置
         self.extractor = self._create_extractor(settings)
         self._config_refresh_interval_seconds = getattr(
@@ -104,6 +116,10 @@ class KeywordProcessor:
             关键词列表（按重要性降序排列）
         """
         self._sync_config()
+
+        if _DISABLE_KEYWORD_ALGORITHM:
+            logger.info("传统算法关键词提取已禁用，跳过")
+            return []
 
         if not transcript:
             logger.warning("输入的讲解文本为空")
@@ -164,6 +180,10 @@ class KeywordProcessor:
         """
         self._sync_config()
 
+        if _DISABLE_KEYWORD_ALGORITHM:
+            logger.info("传统算法关键词详细提取已禁用，跳过")
+            return []
+
         if not transcript:
             logger.warning("输入的讲解文本为空")
             return []
@@ -197,6 +217,10 @@ class KeywordProcessor:
             包含关键词和各项分数的字典
         """
         self._sync_config()
+
+        if _DISABLE_KEYWORD_ALGORITHM:
+            logger.info("传统算法关键词详情提取已禁用，跳过")
+            return {"keywords": [], "details": []}
 
         if not transcript:
             return {"keywords": [], "details": []}
@@ -282,8 +306,8 @@ class KeywordProcessor:
         Returns:
             关键词列表（去重后，按模型输出顺序）
         """
-        self._sync_config()
-
+        # LLM 提示词由 generate_keywords 内部的 get_settings() 按刷新间隔读取；
+        # 这里不调用 _sync_config()，避免 LLM 路径依赖传统算法 extractor。
         if not transcript:
             logger.warning("输入的讲解文本为空")
             return []

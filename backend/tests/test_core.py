@@ -277,6 +277,42 @@ class TestKeywordProcessor(unittest.TestCase):
         )
 
 
+class TestKeywordProcessorWithAlgorithmDisabled(unittest.TestCase):
+    @patch("app.core.keyword.generate_keywords")
+    def test_extract_keywords_llm_does_not_require_algorithm_extractor(
+        self, mock_generate_keywords
+    ):
+        mock_generate_keywords.return_value = '["LLM关键词"]'
+
+        with (
+            patch("app.core.keyword._DISABLE_KEYWORD_ALGORITHM", True),
+            patch("app.core.keyword.get_settings") as mock_get_settings,
+            patch("app.core.keyword._get_keyword_extraction_module") as mock_get_module,
+        ):
+            mock_get_settings.return_value.settings_refresh_interval_seconds = 999
+            processor = KeywordProcessor()
+            result = processor.extract_keywords_llm("课堂内容", limit=3)
+
+        self.assertEqual(result, ["LLM关键词"])
+        self.assertIsNone(processor.extractor)
+        mock_get_module.assert_not_called()
+        mock_generate_keywords.assert_called_once()
+
+    def test_extract_keywords_algorithm_returns_empty_when_algorithm_disabled(self):
+        with (
+            patch("app.core.keyword._DISABLE_KEYWORD_ALGORITHM", True),
+            patch("app.core.keyword.get_settings") as mock_get_settings,
+            patch("app.core.keyword._get_keyword_extraction_module") as mock_get_module,
+        ):
+            mock_get_settings.return_value.settings_refresh_interval_seconds = 999
+            processor = KeywordProcessor()
+            result = processor.extract_keywords_algorithm("课堂内容")
+
+        self.assertEqual(result, [])
+        self.assertIsNone(processor.extractor)
+        mock_get_module.assert_not_called()
+
+
 class TestKnowledgeProcessor(unittest.TestCase):
     def setUp(self):
         with patch("app.core.knowledge.get_settings") as mock_get_settings:
