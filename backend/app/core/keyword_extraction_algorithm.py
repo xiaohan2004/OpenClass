@@ -8,6 +8,7 @@
 """
 
 import logging
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
     import numpy as np
 
 logger = logging.getLogger(__name__)
-logger.info("[启动耗时] keyword_extraction_algorithm.py | 模块加载完成（重量级依赖已延迟）")
+logger.info("[启动耗时] keyword_extraction_algorithm.py | 模块开始加载")
 
 
 def _load_stopwords() -> set[str]:
@@ -175,7 +176,7 @@ logger.info("[启动耗时] keyword_extraction_algorithm.py | STOPWORDS 加载�
             len(STOPWORDS), time.perf_counter() - _t_sw)
 
 
-# ===== 延迟加载的重量级依赖 =====
+# ===== 启动时加载的重量级依赖 =====
 
 # 标记是否已加载
 _heavy_deps_loaded = False
@@ -189,14 +190,13 @@ _SentenceTransformer = None
 
 
 def _ensure_heavy_deps_loaded():
-    """在首次需要时加载重量级依赖（线程安全）。"""
+    """加载重量级依赖（线程安全）。"""
     global _heavy_deps_loaded, _jieba, _np, _KeyBERT, _KMeans
     global _TfidfVectorizer, _cosine, _SentenceTransformer
 
     if _heavy_deps_loaded:
         return
 
-    import threading
     # 使用模块级锁确保线程安全
     if not hasattr(_ensure_heavy_deps_loaded, '_lock'):
         _ensure_heavy_deps_loaded._lock = threading.Lock()
@@ -253,6 +253,10 @@ def _ensure_heavy_deps_loaded():
         _heavy_deps_loaded = True
         logger.info("[启动耗时] keyword_extraction_algorithm.py | 所有重量级依赖加载完成 | 总耗时=%.3fs",
                     time.perf_counter() - _t_start)
+
+
+_ensure_heavy_deps_loaded()
+logger.info("[启动耗时] keyword_extraction_algorithm.py | 模块加载完成（重量级依赖已加载）")
 
 
 @dataclass

@@ -37,7 +37,10 @@ from .quiz import QuizProcessor
 
 logger = logging.getLogger(__name__)
 
-_DISABLE_KEYWORD_ALGORITHM = os.environ.get("DISABLE_KEYWORD_ALGORITHM", "").lower() in ("1", "true", "yes")
+_DISABLE_KEYWORD_ALGORITHM = os.environ.get(
+    "DISABLE_KEYWORD_ALGORITHM",
+    "",
+).lower() in ("1", "true", "yes")
 
 
 @lru_cache(maxsize=1)
@@ -58,6 +61,45 @@ def get_knowledge_processor() -> KnowledgeProcessor:
 @lru_cache(maxsize=1)
 def get_quiz_processor() -> QuizProcessor:
     return QuizProcessor()
+
+
+def preload_runtime_dependencies() -> None:
+    """启动时预加载运行中会用到的服务实例和处理器。"""
+    start_time = time.perf_counter()
+    logger.info("[启动耗时] main_flow | 开始预加载运行时依赖")
+
+    _step = time.perf_counter()
+    get_asr_service()
+    get_tts_service()
+    logger.info(
+        "[启动耗时] main_flow | ASR/TTS 服务实例预加载完成 | 耗时=%.3fs",
+        time.perf_counter() - _step,
+    )
+
+    _step = time.perf_counter()
+    get_question_processor()
+    get_knowledge_processor()
+    get_quiz_processor()
+    logger.info(
+        "[启动耗时] main_flow | 常规处理器预加载完成 | 耗时=%.3fs",
+        time.perf_counter() - _step,
+    )
+
+    if _DISABLE_KEYWORD_ALGORITHM:
+        logger.info("[启动模式] 传统算法提取关键词已关闭，跳过 KeywordProcessor 预加载")
+    else:
+        _step = time.perf_counter()
+        get_keyword_processor()
+        logger.info(
+            "[启动耗时] main_flow | KeywordProcessor 预加载完成 | 耗时=%.3fs",
+            time.perf_counter() - _step,
+        )
+
+    logger.info(
+        "[启动耗时] main_flow | 运行时依赖预加载完成 | 总耗时=%.3fs",
+        time.perf_counter() - start_time,
+    )
+
 
 # 计数器，用于控制关键词/知识点/小测处理的触发间隔
 _handle_audio_call_count = 0

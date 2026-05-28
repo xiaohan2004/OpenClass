@@ -39,6 +39,7 @@ async def lifespan(_: FastAPI):
     """应用生命周期，启动时初始化数据库。"""
     logger.info("[启动耗时] --- lifespan 开始 ---")
     init_db()
+    preload_runtime_dependencies()
     logger.info("[启动耗时] --- lifespan 初始化完成 ---")
     yield
 
@@ -52,6 +53,7 @@ logger.info("[启动耗时] 第1步 | rest_router 导入完成 | 耗时=%.3fs | 
 # 步骤2: 导入 WebSocket router（触发 core/main_flow → core/keyword → keyword_extraction_algorithm 重量级导入）
 _step2 = time.perf_counter()
 from app.api.routes.websocket import router as websocket_router  # noqa: E402
+from app.core.main_flow import preload_runtime_dependencies  # noqa: E402
 logger.info("[启动耗时] 第2步 | websocket_router 导入完成 | 耗时=%.3fs | 累计=%.3fs",
             time.perf_counter() - _step2, time.perf_counter() - _startup_total)
 

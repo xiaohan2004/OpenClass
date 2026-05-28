@@ -15,18 +15,25 @@ from app.services.llm import generate_keywords
 
 logger = logging.getLogger(__name__)
 
-_DISABLE_KEYWORD_ALGORITHM = os.environ.get("DISABLE_KEYWORD_ALGORITHM", "").lower() in ("1", "true", "yes")
+_DISABLE_KEYWORD_ALGORITHM = os.environ.get(
+    "DISABLE_KEYWORD_ALGORITHM",
+    "",
+).lower() in ("1", "true", "yes")
 
-# 延迟加载重量级依赖，仅在启用传统算法时才导入
-_keyword_extraction_algorithm = None
+# 程序启动阶段加载重量级依赖，仅在启用传统算法时导入
+if _DISABLE_KEYWORD_ALGORITHM:
+    _keyword_extraction_algorithm = None
+else:
+    _t_keyword_algorithm = time.perf_counter()
+    from . import keyword_extraction_algorithm as _keyword_extraction_algorithm
+    logger.info(
+        "[启动耗时] keyword.py | keyword_extraction_algorithm 导入完成 | 耗时=%.3fs",
+        time.perf_counter() - _t_keyword_algorithm,
+    )
 
 
 def _get_keyword_extraction_module():
-    """延迟导入关键词提取算法模块。"""
-    global _keyword_extraction_algorithm
-    if _keyword_extraction_algorithm is None and not _DISABLE_KEYWORD_ALGORITHM:
-        from app.core import keyword_extraction_algorithm
-        _keyword_extraction_algorithm = keyword_extraction_algorithm
+    """返回启动时加载的关键词提取算法模块。"""
     return _keyword_extraction_algorithm
 
 
